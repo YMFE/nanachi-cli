@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "es2015",
+    "outDir": "es",
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "target": "es2017",
+    "strictNullChecks": true,
+    "noEmitOnError": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "src",
+    "moduleResolution": "node",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@commands/*": ["cli/commands/*"]
+    }
+  }
+}

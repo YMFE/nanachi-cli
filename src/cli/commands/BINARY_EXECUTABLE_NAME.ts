@@ -1,0 +1,1 @@
+export default 'nanachi-cli';

@@ -1,0 +1,14 @@
+{
+  "extends": "tslint:latest",
+  "rules": {
+    "indent": [true, "spaces", 2],
+    "quotemark": [true, "single", "jsx-double"],
+    "trailing-comma": false,
+    "curly": [true, "ignore-same-line"],
+    "object-literal-sort-keys": false,
+    "arrow-parens": false,
+    "object-literal-key-quotes": false,
+    "no-implicit-dependencies": [true, ["@shared", "@commands"]],
+    "no-submodule-imports": false
+  }
+}
