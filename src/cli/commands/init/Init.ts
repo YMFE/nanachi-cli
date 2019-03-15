@@ -5,7 +5,7 @@ import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import path from 'path';
 import SubCommand from '../SubCommand';
-import Templates from './Templates';
+import TemplatesManager from './TemplatesManager';
 
 // tslint:disable-next-line: no-var-requires
 const validate = require('validate-npm-package-name');
@@ -19,7 +19,7 @@ interface InterfaceTemplateId {
 }
 
 class Init extends SubCommand {
-  private templates: Templates = new Templates();
+  private templatesManager: TemplatesManager = new TemplatesManager();
   private inputProjectName: string;
   private templateId: string;
 
@@ -34,7 +34,7 @@ class Init extends SubCommand {
     const { templateId } = await this.askForTemplateId();
     this.templateId = templateId;
 
-    const { repositoryUrl: url, checkout } = this.templates.templates[
+    const { repositoryUrl: url, checkout } = this.templatesManager.templates[
       this.templateId
     ];
 
@@ -44,7 +44,7 @@ class Init extends SubCommand {
   }
 
   private get choices() {
-    const templates = this.templates.templates;
+    const templates = this.templatesManager.templates;
 
     return Object.keys(templates).map(id => ({
       name: `${templates[id].name} - ${templates[id].description}`,
@@ -108,7 +108,7 @@ class Init extends SubCommand {
   }
 
   private async askForTemplateId(): Promise<InterfaceTemplateId> {
-    await this.templates.retrieveRemoteTemplates();
+    await this.templatesManager.retrieveRemoteTemplates();
     return inquirer.prompt([
       {
         type: 'list',

@@ -1,6 +1,6 @@
-import { InterfaceTemplates } from './Templates';
+import { InterfaceTemplatesManager } from './TemplatesManager';
 
-const DEFAULT_TEMPLATES: InterfaceTemplates = {
+const DEFAULT_TEMPLATES: InterfaceTemplatesManager = {
   qunar: {
     id: 'qunar',
     name: '去哪儿',

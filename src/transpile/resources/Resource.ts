@@ -1,17 +1,31 @@
-class Resource {
-  public content: string;
-  public encoding: string;
+export interface InterfaceResource {
+  content?: string;
+  encoding?: string;
+}
 
-  constructor(content: string = '', encoding: string = 'utf8') {
-    this.content = content;
-    this.encoding = encoding;
+class Resource {
+  private resourceContent: string;
+  private resourceEncoding: string;
+
+  constructor({ content = '', encoding = 'utf8' }: InterfaceResource = {}) {
+    this.resourceContent = content;
+    this.resourceEncoding = encoding;
+  }
+
+  public get content() {
+    return this.resourceContent;
+  }
+
+  public get encoding() {
+    return this.resourceEncoding;
   }
 
   public setContent(content: string) {
-    this.content = content;
+    this.resourceContent = content;
   }
+
   public setEncoding(encoding: string) {
-    this.encoding = encoding;
+    this.resourceEncoding = encoding;
   }
 }
 

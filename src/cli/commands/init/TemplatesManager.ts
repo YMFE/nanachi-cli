@@ -11,26 +11,26 @@ interface InterfaceTemplateItem {
   checkout: string;
 }
 
-export interface InterfaceTemplates {
+export interface InterfaceTemplatesManager {
   [template: string]: InterfaceTemplateItem;
 }
 
-class Templates {
+class TemplatesManager {
   private static remoteTemplatesUrl: string =
     'https://raw.githubusercontent.com/YMFE/nanachi-templates/master/templates.json';
   private static fetchingRemoteTemplatesTimeout: number = 5000;
-  public templates: InterfaceTemplates = DEFAULT_TEMPLATES;
+  public templates: InterfaceTemplatesManager = DEFAULT_TEMPLATES;
 
   public async retrieveRemoteTemplates() {
     log(
       chalk`{bold Retrieving remote templates from {cyan.underline ${
-        Templates.remoteTemplatesUrl
+        TemplatesManager.remoteTemplatesUrl
       }}}`
     );
 
     try {
-      const { data } = await axios.get(Templates.remoteTemplatesUrl, {
-        timeout: Templates.fetchingRemoteTemplatesTimeout
+      const { data } = await axios.get(TemplatesManager.remoteTemplatesUrl, {
+        timeout: TemplatesManager.fetchingRemoteTemplatesTimeout
       });
 
       this.templates = {
@@ -41,11 +41,11 @@ class Templates {
     } catch (e) {
       warn(
         chalk`{yellow.bold Unable to retrieve remote templates({underline ${
-          Templates.remoteTemplatesUrl
+          TemplatesManager.remoteTemplatesUrl
         }}), using offline templates.}`
       );
     }
   }
 }
 
-export default Templates;
+export default TemplatesManager;
