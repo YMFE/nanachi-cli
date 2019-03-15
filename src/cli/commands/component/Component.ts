@@ -2,18 +2,20 @@ import EntityInitialization from '@commands/page/EntityInitialization';
 import { InterfaceSubCommand } from '@commands/SubCommand';
 import { stop } from '@shared/spinner';
 import chalk from 'chalk';
-import COMPONENT_TEMPLATE from './COMPONENT_TEMPLATE';
+import createComponentTemplate from './createComponentTemplate';
 
 class Component extends EntityInitialization {
   constructor(args: InterfaceSubCommand) {
     super({
       ...args,
       type: 'components',
-      template: COMPONENT_TEMPLATE
+      createTemplate: createComponentTemplate
     });
   }
 
   public run() {
+    super.checkIfEntityNameProvided();
+
     if (this.validComponentName) return super.run();
 
     stop(

@@ -6,55 +6,43 @@ import path from 'path';
 
 interface InterfaceEntityInitialization extends InterfaceSubCommand {
   type: string;
-  template: string;
+  createTemplate: InterfaceCreateTemplate;
 }
+
+type InterfaceCreateTemplate = (name: string) => string;
 
 class EntityInitialization extends SubCommand {
   private type: string;
-  private template: string;
+  private createTemplate: InterfaceCreateTemplate;
 
   constructor({
     type,
-    template,
+    createTemplate,
     ...subCommandArgs
   }: InterfaceEntityInitialization) {
     super(subCommandArgs);
     this.type = type;
-    this.template = template;
+    this.createTemplate = createTemplate;
   }
 
   public run() {
     this.createEntity();
   }
 
+  public checkIfEntityNameProvided() {
+    if (this.entityName) return;
+
+    stop(
+      chalk`{bold There seems to be no {yellow ${
+        this.entityTag
+      } name} provided, make sure you provide a valid name.}`
+    );
+
+    this.exit(-1);
+  }
+
   private get entityTag() {
     return `${this.type.charAt(0).toUpperCase()}${this.type.slice(1, -1)}`;
-  }
-
-  private async createEntity() {
-    try {
-      await this.checkIfHasSourceDir();
-      await this.checkIfEntityNameOccupied();
-      await this.outputPage();
-    } catch (err) {
-      stop(
-        chalk`{bold ${this.entityTag} {yellow ${
-          this.entityName
-        }} create failed with error ${err}}`
-      );
-    }
-  }
-
-  private async checkIfHasSourceDir() {
-    if (!(await fs.pathExists(this.sourceDir))) {
-      stop(
-        chalk`{bold There seems to be no {yellow source} directory in current directory {green (${
-          this.cwd
-        })}}`
-      );
-
-      this.exit(-1);
-    }
   }
 
   protected get entityName() {
@@ -73,6 +61,33 @@ class EntityInitialization extends SubCommand {
     return path.resolve(this.entityDir, 'index.js');
   }
 
+  private async createEntity() {
+    try {
+      await this.checkIfEntityNameProvided();
+      await this.checkIfHasSourceDir();
+      await this.checkIfEntityNameOccupied();
+      await this.outputPage();
+    } catch (err) {
+      stop(
+        chalk`{bold ${this.entityTag} {yellow ${
+          this.entityName
+        }} create failed with error ${err}}`
+      );
+    }
+  }
+
+  private async checkIfHasSourceDir() {
+    if (await fs.pathExists(this.sourceDir)) return;
+
+    stop(
+      chalk`{bold There seems to be no {yellow source} directory in current directory {green (${
+        this.cwd
+      })}, make sure you are in the project root.}`
+    );
+
+    this.exit(-1);
+  }
+
   private async checkIfEntityNameOccupied() {
     if (await fs.pathExists(this.entityDir)) {
       stop(
@@ -85,7 +100,7 @@ class EntityInitialization extends SubCommand {
   }
 
   private async outputPage() {
-    await fs.outputFile(this.entityPath, this.template);
+    await fs.outputFile(this.entityPath, this.createTemplate(this.entityName));
 
     stop(
       chalk`{bold ${this.entityTag} {green ${

@@ -39,16 +39,8 @@ class Init extends SubCommand {
     ];
 
     await git.clone({ url, checkout, dirname: this.projectName });
-  }
 
-  // 如果用户没有输入用户名
-  // 直接执行 nanachi init
-  // 需要用户输入
-  private async checkIfNameProvided() {
-    if (this.initialProjectName) return;
-
-    const { projectName } = await this.askForProjectName();
-    this.inputProjectName = projectName;
+    await this.removeGitDirectory();
   }
 
   private get choices() {
@@ -62,6 +54,10 @@ class Init extends SubCommand {
 
   private get projectDirectory() {
     return path.resolve(this.cwd, this.projectName);
+  }
+
+  private get projectGitDirectory() {
+    return path.resolve(this.projectDirectory, '.git');
   }
 
   // 用户通过命令行直接输入的项目名
@@ -84,6 +80,16 @@ class Init extends SubCommand {
 
       this.exit(-1);
     }
+  }
+
+  // 如果用户没有输入用户名
+  // 直接执行 nanachi init
+  // 需要用户输入
+  private async checkIfNameProvided() {
+    if (this.initialProjectName) return;
+
+    const { projectName } = await this.askForProjectName();
+    this.inputProjectName = projectName;
   }
 
   private async askForProjectName(): Promise<InterfaceProjectName> {
@@ -111,6 +117,10 @@ class Init extends SubCommand {
         name: 'templateId'
       }
     ]);
+  }
+
+  private async removeGitDirectory() {
+    await fs.remove(this.projectGitDirectory);
   }
 }
 
