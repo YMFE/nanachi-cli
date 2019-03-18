@@ -1,34 +1,24 @@
 import fs from 'fs-extra';
-import FileResource, { InterfaceFileResource } from './FileResource';
+import FileResource from './FileResource';
 
-export interface InterfaceReadableResource extends InterfaceFileResource {
-  name: string;
-  ext: string;
-  directory: string;
-}
-
-export const enum ReadableResourceState {
+export const enum ErrorReportableResourceState {
   Ready = 0,
   Read = 1,
   Error = 2
 }
 
 class ReadableResource extends FileResource {
-  public state: ReadableResourceState = ReadableResourceState.Ready;
+  public state: ErrorReportableResourceState = ErrorReportableResourceState.Ready;
   public error: Error;
-
-  constructor(resource: InterfaceReadableResource) {
-    super(resource);
-  }
 
   public async read() {
     try {
-      const content = await fs.readFile(this.fullFilePath, this.encoding);
+      const content = await fs.readFile(this.rawPath, this.encoding);
 
       this.setContent(content);
-      this.state = ReadableResourceState.Read;
+      this.state = ErrorReportableResourceState.Read;
     } catch (e) {
-      this.state = ReadableResourceState.Error;
+      this.state = ErrorReportableResourceState.Error;
       this.error = e;
     }
   }

@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import FileResource, { InterfaceFileResource } from './FileResource';
+import { ErrorReportableResourceState } from './ReadableResource';
 
 export interface InterfaceWritableResource extends InterfaceFileResource {
   emit?: boolean;
@@ -7,15 +8,26 @@ export interface InterfaceWritableResource extends InterfaceFileResource {
 
 class WritableResource extends FileResource {
   public emit: boolean;
-  public emitted: boolean;
+  public emitted: boolean = false;
+  public error: Error;
+  public state: ErrorReportableResourceState = ErrorReportableResourceState.Ready;
 
   constructor({ emit = true, ...resource }: InterfaceWritableResource) {
     super(resource);
+
     this.emit = emit;
   }
 
   public async write() {
-    await fs.outputFile(this.fullFilePath, this.content);
+    if (this.emit) {
+      try {
+        await fs.outputFile(this.rawPath, this.content);
+        this.emitted = true;
+      } catch (e) {
+        this.state = ErrorReportableResourceState.Error;
+        this.error = e;
+      }
+    }
   }
 }
 

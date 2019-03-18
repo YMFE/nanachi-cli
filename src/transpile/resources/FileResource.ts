@@ -2,34 +2,42 @@ import path from 'path';
 import Resource, { InterfaceResource } from './Resource';
 
 export interface InterfaceFileResource extends InterfaceResource {
-  ext: string;
-  name: string;
-  directory: string;
+  rawPath: string;
 }
 
 class FileResource extends Resource {
-  public ext: string;
-  public name: string;
-  public directory: string;
+  public rawPath: string;
+  private parsedPath: path.ParsedPath;
 
-  constructor({ ext, name, directory, ...resource }: InterfaceFileResource) {
+  constructor({ rawPath, ...resource }: InterfaceFileResource) {
     super(resource);
 
-    this.ext = ext;
-    this.name = name;
-    this.directory = directory;
-  }
-
-  public get fileName() {
-    return `${this.name}${this.ext}`;
-  }
-
-  public get fullFilePath() {
-    return path.resolve(this.directory, this.fileName);
+    this.init(rawPath);
+    this.rawPath = rawPath;
   }
 
   public relative(from: string) {
-    return path.relative(from, this.fullFilePath);
+    return path.relative(from, this.rawPath);
+  }
+
+  private init(rawPath: string) {
+    this.parsedPath = path.parse(rawPath);
+  }
+
+  public get ext() {
+    return this.parsedPath.ext;
+  }
+
+  public get name() {
+    return this.parsedPath.name;
+  }
+
+  public get dir() {
+    return this.parsedPath.dir;
+  }
+
+  public get base() {
+    return this.parsedPath.base;
   }
 }
 

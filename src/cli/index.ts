@@ -2,6 +2,7 @@
 import BINARY_EXECUTABLE_NAME from '@commands/BINARY_EXECUTABLE_NAME';
 import chalk from 'chalk';
 import yargs from 'yargs';
+import build from './commands/build/index';
 import component from './commands/component/index';
 import help from './commands/help/index';
 import init from './commands/init/index';
@@ -52,7 +53,7 @@ function cli() {
       init();
       break;
     case String(subCommand).startsWith('build'):
-      console.log('build');
+      build();
       break;
     case String(subCommand).startsWith('watch'):
       console.log('watch');

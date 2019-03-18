@@ -1,6 +1,6 @@
-import JavaScript from './JavaScript';
+import JavaScriptClass from './JavaScriptClass';
 
-class JavaScriptClass extends JavaScript {
+class JavaScriptApp extends JavaScriptClass {
   public async process() {
     await super.load();
     super.initOptions();
@@ -9,4 +9,4 @@ class JavaScriptClass extends JavaScript {
   }
 }
 
-export default JavaScriptClass;
+export default JavaScriptApp;

@@ -7,6 +7,12 @@ class SourceCodeResource extends ReadableResource {
   public ast: File;
   public sourceMap: object;
   public writableResource: WritableResource;
+
+  public async load() {
+    await this.read();
+
+    this.sourceCode = this.content;
+  }
 }
 
 export default SourceCodeResource;

@@ -12,7 +12,10 @@
     "moduleResolution": "node",
     "paths": {
       "@shared/*": ["shared/*"],
-      "@commands/*": ["cli/commands/*"]
+      "@commands/*": ["cli/commands/*"],
+      "@resources/*": ["transpile/resources/*"],
+      "@languages/*": ["transpile/languages/*"],
+      "@transpiler/*": ["transpile/transpiler/*"]
     }
   }
 }
