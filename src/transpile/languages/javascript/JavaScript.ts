@@ -7,20 +7,13 @@ class JavaScript extends SourceCodeResource {
   private parserOptions: ParserOptions;
   private traverseOptions: TraverseOptions = {};
 
+  public beforeTranspile() {
+    this.initOptions();
+    this.parse();
+  }
+
   public registerTraverseOption(options: TraverseOptions) {
     this.traverseOptions = { ...this.traverseOptions, ...options };
-  }
-
-  public initOptions() {
-    this.parserOptions = {
-      sourceType: 'module',
-      sourceFilename: this.rawPath,
-      plugins: ['jsx', 'asyncGenerators', 'classProperties', 'objectRestSpread']
-    };
-  }
-
-  public parse() {
-    this.ast = parse(this.sourceCode, this.parserOptions);
   }
 
   public traverse() {
@@ -30,6 +23,18 @@ class JavaScript extends SourceCodeResource {
   public generate() {
     const { code } = generate(this.ast);
     this.setContent(code);
+  }
+
+  private initOptions() {
+    this.parserOptions = {
+      sourceType: 'module',
+      sourceFilename: this.rawPath,
+      plugins: ['jsx', 'asyncGenerators', 'classProperties', 'objectRestSpread']
+    };
+  }
+
+  private parse() {
+    this.ast = parse(this.sourceCode, this.parserOptions);
   }
 }
 

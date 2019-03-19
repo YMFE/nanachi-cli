@@ -3,7 +3,17 @@ export interface InterfaceResource {
   encoding?: string;
 }
 
+export const enum ErrorReportableResourceState {
+  Ready = 0,
+  Read = 1,
+  Error = 2
+}
+
 class Resource {
+  public state: ErrorReportableResourceState =
+    ErrorReportableResourceState.Ready;
+  public error: Error;
+
   private resourceContent: string;
   private resourceEncoding: string;
 

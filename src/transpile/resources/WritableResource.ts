@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import FileResource, { InterfaceFileResource } from './FileResource';
-import { ErrorReportableResourceState } from './ReadableResource';
+import { ErrorReportableResourceState } from './Resource';
 
 export interface InterfaceWritableResource extends InterfaceFileResource {
   emit?: boolean;
@@ -9,8 +9,6 @@ export interface InterfaceWritableResource extends InterfaceFileResource {
 class WritableResource extends FileResource {
   public emit: boolean;
   public emitted: boolean = false;
-  public error: Error;
-  public state: ErrorReportableResourceState = ErrorReportableResourceState.Ready;
 
   constructor({ emit = true, ...resource }: InterfaceWritableResource) {
     super(resource);

@@ -1,16 +1,8 @@
 import fs from 'fs-extra';
 import FileResource from './FileResource';
-
-export const enum ErrorReportableResourceState {
-  Ready = 0,
-  Read = 1,
-  Error = 2
-}
+import { ErrorReportableResourceState } from './Resource';
 
 class ReadableResource extends FileResource {
-  public state: ErrorReportableResourceState = ErrorReportableResourceState.Ready;
-  public error: Error;
-
   public async read() {
     try {
       const content = await fs.readFile(this.rawPath, this.encoding);

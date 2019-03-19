@@ -7,6 +7,7 @@ export interface InterfaceFileResource extends InterfaceResource {
 
 class FileResource extends Resource {
   public rawPath: string;
+
   private parsedPath: path.ParsedPath;
 
   constructor({ rawPath, ...resource }: InterfaceFileResource) {
