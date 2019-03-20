@@ -7,14 +7,25 @@ class JavaScriptApp extends JavaScriptClass {
   private configObject: { [property: string]: any };
 
   public async process() {
-    await super.load();
-    super.beforeTranspile();
-    super.registerTransformClassToFunction();
-    this.registerTransformApp();
+    await this.beforeTranspile();
+
+    this.register();
+
     this.traverse();
+
     super.generate();
+
     this.transformConfigToObject();
     this.injectPages();
+  }
+
+  public async beforeTranspile() {
+    await super.beforeTranspile();
+  }
+
+  public register() {
+    super.register();
+    this.registerTransformApp();
   }
 
   public get appJSONString() {

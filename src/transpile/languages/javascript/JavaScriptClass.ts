@@ -4,10 +4,19 @@ import uid from '@shared/uid';
 import JavaScript from './JavaScript';
 
 class JavaScriptClass extends JavaScript {
-  private classIdentifier: t.Identifier;
+  public classIdentifier: t.Identifier;
+
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
   private classMethods: t.ClassMethod[] = [];
   private superClass: t.Node | null;
+
+  public async beforeTranspile() {
+    await super.beforeTranspile();
+  }
+
+  public register() {
+    this.registerTransformClassToFunction();
+  }
 
   public registerTransformClassToFunction() {
     this.registerTraverseOption({
@@ -27,7 +36,9 @@ class JavaScriptClass extends JavaScript {
             return;
           }
 
-          this.superClass = superClass.node;
+          this.superClass = t.clone(superClass.node!);
+
+          return;
         },
         exit: path => {
           path.replaceWithMultiple([
@@ -41,9 +52,13 @@ class JavaScriptClass extends JavaScript {
         const value = path.get('value');
 
         this.classProperties.push([key.node, value.node]);
+
+        return;
       },
       ClassMethod: path => {
         this.classMethods.push(path.node);
+
+        return;
       }
     });
   }

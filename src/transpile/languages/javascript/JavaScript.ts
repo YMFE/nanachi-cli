@@ -7,7 +7,8 @@ class JavaScript extends SourceCodeResource {
   private parserOptions: ParserOptions;
   private traverseOptions: TraverseOptions = {};
 
-  public beforeTranspile() {
+  public async beforeTranspile() {
+    await super.load();
     this.initOptions();
     this.parse();
   }

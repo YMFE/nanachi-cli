@@ -14,6 +14,7 @@ export default {
       '@resources': path.join(__dirname, 'es/transpile/resources'),
       '@languages': path.join(__dirname, 'es/transpile/languages'),
       '@transpiler': path.join(__dirname, 'es/transpile/transpiler'),
+      '@platforms': path.join(__dirname, 'es/transpile/platforms'),
     })
   ]
 };

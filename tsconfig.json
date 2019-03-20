@@ -15,7 +15,8 @@
       "@commands/*": ["cli/commands/*"],
       "@resources/*": ["transpile/resources/*"],
       "@languages/*": ["transpile/languages/*"],
-      "@transpiler/*": ["transpile/transpiler/*"]
+      "@transpiler/*": ["transpile/transpiler/*"],
+      "@platforms/*": ["transpile/platforms/*"]
     }
   }
 }

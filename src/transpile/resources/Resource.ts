@@ -1,6 +1,9 @@
+import Transpiler from '@transpiler/Transpiler';
+
 export interface InterfaceResource {
   content?: string;
   encoding?: string;
+  transpiler: Transpiler;
 }
 
 export const enum ErrorReportableResourceState {
@@ -13,13 +16,19 @@ class Resource {
   public state: ErrorReportableResourceState =
     ErrorReportableResourceState.Ready;
   public error: Error;
+  public transpiler: Transpiler;
 
   private resourceContent: string;
   private resourceEncoding: string;
 
-  constructor({ content = '', encoding = 'utf8' }: InterfaceResource = {}) {
+  constructor({
+    content = '',
+    encoding = 'utf8',
+    transpiler
+  }: InterfaceResource) {
     this.resourceContent = content;
     this.resourceEncoding = encoding;
+    this.transpiler = transpiler;
   }
 
   public get content() {
