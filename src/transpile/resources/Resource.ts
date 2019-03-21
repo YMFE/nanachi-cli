@@ -15,7 +15,7 @@ export const enum ErrorReportableResourceState {
 class Resource {
   public state: ErrorReportableResourceState =
     ErrorReportableResourceState.Ready;
-  public error: Error;
+  public error: Error | string = '';
   public transpiler: Transpiler;
 
   private resourceContent: string;

@@ -4,12 +4,17 @@ import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptPage extends JavaScriptClass {
   public async process() {
-    await super.load();
-    super.beforeTranspile();
-    super.registerTransformClassToFunction();
+    await this.beforeTranspile();
+    this.register();
+  }
+
+  public async beforeTranspile() {
+    await super.beforeTranspile();
+  }
+
+  public register() {
+    super.register();
     this.registerNativePage();
-    this.traverse();
-    super.generate();
   }
 
   private get relativePagePath() {

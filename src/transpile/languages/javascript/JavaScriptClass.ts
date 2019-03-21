@@ -1,10 +1,16 @@
+import { transformFromAstSync } from '@babel/core';
+import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
+import { ErrorReportableResourceState } from '@resources/Resource';
+import { isMemberExpressionContainsThis } from '@shared/assert';
 import reportError from '@shared/reportError';
+import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
 import JavaScript from './JavaScript';
 
 class JavaScriptClass extends JavaScript {
   public classIdentifier: t.Identifier;
+  public renderMethod: t.ClassMethod;
 
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
   private classMethods: t.ClassMethod[] = [];
@@ -31,6 +37,7 @@ class JavaScriptClass extends JavaScript {
             this.error = new Error(
               'Anonymous ClassDeclaration is not allowed in App or Page or Component'
             );
+            this.state = ErrorReportableResourceState.Error;
             reportError(this);
 
             return;
@@ -55,10 +62,19 @@ class JavaScriptClass extends JavaScript {
 
         return;
       },
-      ClassMethod: path => {
-        this.classMethods.push(path.node);
+      ClassMethod: {
+        enter: path => {
+          this.classMethods.push(path.node);
+          this.transformArrayMap(path);
 
-        return;
+          return;
+        },
+        exit: path => {
+          this.transformReact(path);
+        }
+      },
+      JSXEmptyExpression: path => {
+        path.findParent(t.isJSXExpressionContainer).remove();
       }
     });
   }
@@ -95,6 +111,94 @@ class JavaScriptClass extends JavaScript {
       this.buildStaticObjectExpression()
     ];
     return args.filter(arg => !!arg) as t.Identifier[];
+  }
+
+  private transformArrayMapCallExpression(path: NodePath<t.CallExpression>) {
+    const callee = path.get('callee');
+
+    if (t.isMemberExpression(callee)) {
+      const object = (callee as NodePath<t.MemberExpression>).get('object');
+
+      if (t.isMemberExpression(object)) {
+        if (isMemberExpressionContainsThis(callee)) {
+          const args = path.node.arguments;
+
+          if (args.length < 2) {
+            args.push(t.thisExpression());
+          }
+
+          const mapCallback = args[0];
+
+          if (t.isFunctionExpression(mapCallback)) {
+            const params = mapCallback.params;
+
+            if (params.length < 2) {
+              params.push(t.identifier('i_' + uid.next()));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private transformArrayMapArrowExpression(
+    path: NodePath<t.ArrowFunctionExpression>
+  ) {
+    path.replaceWith(transformArrowFunctionToBindFunction(path.node));
+
+    this.transformArrayMapCallExpression(path.findParent(
+      t.isCallExpression
+    ) as any);
+  }
+
+  private transformReact(path: NodePath<t.ClassMethod>) {
+    if (
+      path.get('key').isIdentifier({
+        name: 'render'
+      })
+    ) {
+      this.renderMethod = t.cloneDeep(path.node);
+
+      const renderNode = t.program([path.node.body]);
+
+      const result = transformFromAstSync(renderNode, undefined, {
+        presets: [[require('@babel/preset-react'), { pragma: 'h' }]],
+        ast: true
+      });
+
+      const renderRoot = result!.ast!.program.body[0];
+
+      (renderRoot as t.BlockStatement).body.unshift(
+        t.variableDeclaration('var', [
+          t.variableDeclarator(
+            t.identifier('h'),
+            t.memberExpression(
+              t.identifier('React'),
+              t.identifier('createElement')
+            )
+          )
+        ])
+      );
+
+      (path.node.body as any) = renderRoot;
+    }
+  }
+
+  private transformArrayMap(path: NodePath<t.ClassMethod>) {
+    if (
+      path.get('key').isIdentifier({
+        name: 'render'
+      })
+    ) {
+      path.traverse({
+        CallExpression: callPath => {
+          this.transformArrayMapCallExpression(callPath);
+        },
+        ArrowFunctionExpression: callPath => {
+          this.transformArrayMapArrowExpression(callPath);
+        }
+      });
+    }
   }
 
   private buildClassUid() {
