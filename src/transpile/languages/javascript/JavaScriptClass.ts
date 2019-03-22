@@ -65,11 +65,11 @@ class JavaScriptClass extends JavaScript {
       ClassMethod: {
         enter: path => {
           this.classMethods.push(path.node);
-          this.transformArrayMap(path);
 
           return;
         },
         exit: path => {
+          this.transformArrayMap(path);
           this.transformReact(path);
         }
       },
@@ -98,9 +98,9 @@ class JavaScriptClass extends JavaScript {
   }
 
   private get nonStaticClassMethods() {
-    return this.classMethods.filter(
-      method => !t.isClassMethod(method, { static: true })
-    );
+    return this.classMethods
+      .filter(method => !t.isClassMethod(method, { static: true }))
+      .filter(({ kind }) => kind !== 'constructor');
   }
 
   private get registerArguments() {
@@ -113,11 +113,62 @@ class JavaScriptClass extends JavaScript {
     return args.filter(arg => !!arg) as t.Identifier[];
   }
 
+  private get constructorBody() {
+    const constructorMethod = this.classMethods.find(node =>
+      t.isClassMethod(node, { kind: 'constructor' })
+    );
+
+    if (constructorMethod) {
+      // constructor.body.body 第一个元素是 super() 调用
+      // 需要移除
+      (constructorMethod.body as any).body.shift();
+      return constructorMethod.body.body;
+    }
+
+    return [];
+  }
+
+  private replaceDataIdInMapCall(
+    path: NodePath<t.CallExpression>,
+    indexUid: string
+  ) {
+    path.traverse({
+      JSXAttribute: node => {
+        const attributeName = node.get('name');
+        const attributeValue = node.get('value');
+
+        if (t.isJSXIdentifier(attributeName.node)) {
+          const dataTypeResult = attributeName.node.name.match(
+            /^data-([a-z]+)-id/
+          );
+          if (dataTypeResult) {
+            const [, type] = dataTypeResult;
+            if (type !== 'beacon') {
+              if (t.isStringLiteral(attributeValue.node)) {
+                const id = attributeValue.node.value;
+
+                attributeValue.replaceWith(
+                  t.jsxExpressionContainer(
+                    t.binaryExpression(
+                      '+',
+                      t.stringLiteral(id),
+                      t.identifier(indexUid)
+                    )
+                  )
+                );
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
   private transformArrayMapCallExpression(path: NodePath<t.CallExpression>) {
     const callee = path.get('callee');
 
-    if (t.isMemberExpression(callee)) {
-      const object = (callee as NodePath<t.MemberExpression>).get('object');
+    if (t.isMemberExpression(callee.node)) {
+      const object = callee.get('object');
 
       if (t.isMemberExpression(object)) {
         if (isMemberExpressionContainsThis(callee)) {
@@ -133,7 +184,16 @@ class JavaScriptClass extends JavaScript {
             const params = mapCallback.params;
 
             if (params.length < 2) {
-              params.push(t.identifier('i_' + uid.next()));
+              const indexUid = 'i_' + uid.next();
+
+              this.replaceDataIdInMapCall(path, indexUid);
+
+              params.push(t.identifier(indexUid));
+            } else {
+              this.replaceDataIdInMapCall(
+                path,
+                (params[1] as t.Identifier).name
+              );
             }
           }
         }
@@ -273,9 +333,10 @@ class JavaScriptClass extends JavaScript {
     return t.functionDeclaration(
       this.classIdentifier,
       [],
-      t.blockStatement(
-        this.buildMultipleConstructorAssignmentExpressionStatement()
-      )
+      t.blockStatement([
+        ...this.buildMultipleConstructorAssignmentExpressionStatement(),
+        ...this.constructorBody
+      ])
     );
   }
 }

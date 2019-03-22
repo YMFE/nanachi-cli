@@ -3,7 +3,7 @@ import WritableResource, {
   InterfaceWritableResource
 } from './WritableResource';
 
-interface InterfaceDerivedResource extends InterfaceWritableResource {
+export interface InterfaceDerivedResource extends InterfaceWritableResource {
   creator: SourceCodeResource;
 }
 

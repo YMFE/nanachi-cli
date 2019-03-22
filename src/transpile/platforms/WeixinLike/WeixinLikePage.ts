@@ -5,6 +5,7 @@ import JavaScriptPage from '@languages/javascript/JavaScriptPage';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
+import Template from './Template';
 
 class WeixinLikePage extends JavaScriptPage {
   public async process() {
@@ -14,9 +15,10 @@ class WeixinLikePage extends JavaScriptPage {
 
     super.traverse();
 
+    this.deriveTemplate();
     this.generate();
 
-    console.log(this.content);
+    // console.log(this.content);
   }
 
   public async beforeTranspile() {
@@ -26,6 +28,17 @@ class WeixinLikePage extends JavaScriptPage {
   public register() {
     super.register();
     this.registerAttrName();
+  }
+
+  private deriveTemplate() {
+    const template = new Template({
+      renderMethod: this.renderMethod,
+      creator: this,
+      rawPath: this.pathWithoutExt + '.wxml',
+      transpiler: this.transpiler
+    });
+
+    template.process();
   }
 
   private addEventUidAndBeacon(
@@ -57,13 +70,13 @@ class WeixinLikePage extends JavaScriptPage {
         case /^catch[A-Z]/.test(node.name):
           this.addEventUidAndBeacon(path, node.name.slice(5));
           node.name = `catch${node.name.slice(5).toLocaleLowerCase()}`;
-          path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
+          // path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
           break;
 
         case /^on[A-Z]/.test(node.name):
           this.addEventUidAndBeacon(path, node.name.slice(2));
           node.name = `bind${node.name.slice(2).toLocaleLowerCase()}`;
-          path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
+        // path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
 
         default:
           break;
@@ -84,32 +97,6 @@ class WeixinLikePage extends JavaScriptPage {
             // console.log('remote: ', attributeValue.value);
           }
         }
-      }
-    }
-  }
-
-  private replaceAttributeValueLiteral(path: NodePath<t.JSXAttribute>) {
-    const { node: attributeValue } = path.get('value');
-
-    if (t.isJSXExpressionContainer(attributeValue)) {
-      const { expression } = attributeValue;
-      switch (true) {
-        case t.isNumericLiteral(expression):
-        case t.isIdentifier(expression):
-        case t.isNullLiteral(expression):
-        case t.isBooleanLiteral(expression):
-        case t.isLogicalExpression(expression):
-        case t.isUnaryExpression(expression):
-        case t.isConditionalExpression(expression):
-        case t.isMemberExpression(expression):
-          path
-            .get('value')
-            .replaceWith(t.stringLiteral(`{{${generate(expression!).code}}}`));
-
-          break;
-
-        default:
-          break;
       }
     }
   }

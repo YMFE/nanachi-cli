@@ -40,6 +40,10 @@ class FileResource extends Resource {
   public get base() {
     return this.parsedPath.base;
   }
+
+  public get pathWithoutExt() {
+    return path.resolve(this.dir, this.name);
+  }
 }
 
 export default FileResource;

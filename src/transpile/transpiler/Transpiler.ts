@@ -9,6 +9,7 @@ import path from 'path';
 
 const appEntryFileName = 'app.js';
 const sourceCodeDirName = 'source';
+// const pagePath = 'pages/demo/apis/canvas/arc/index.js';
 const pagePath = 'pages/index/index.js';
 const componentPath = 'components/Animal/index.js';
 
