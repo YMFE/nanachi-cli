@@ -9,8 +9,8 @@ import path from 'path';
 
 const appEntryFileName = 'app.js';
 const sourceCodeDirName = 'source';
-// const pagePath = 'pages/demo/apis/canvas/arc/index.js';
-const pagePath = 'pages/index/index.js';
+const pagePath = 'pages/demo/apis/canvas/fillStyle/index.js';
+// const pagePath = 'pages/index/index.js';
 const componentPath = 'components/Animal/index.js';
 
 class Transpiler {
@@ -38,7 +38,7 @@ class Transpiler {
   }
 
   private get appEntryPath() {
-    return path.resolve(this.projectRoot, sourceCodeDirName, pagePath);
+    return path.resolve(this.projectRoot, sourceCodeDirName, componentPath);
   }
 
   private hasError() {

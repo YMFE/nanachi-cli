@@ -48,11 +48,11 @@ class WeixinLikePage extends JavaScriptPage {
     (path.findParent(t.isJSXOpeningElement)
       .node as JSXOpeningElement).attributes.push(
       t.jsxAttribute(
-        t.jsxIdentifier(`data-${eventName.toLocaleLowerCase()}-id`),
+        t.jsxIdentifier(`data-${eventName.toLocaleLowerCase()}-uid`),
         t.stringLiteral(uid.next())
       ),
       t.jsxAttribute(
-        t.jsxIdentifier('data-beacon-id'),
+        t.jsxIdentifier('data-beacon-uid'),
         t.stringLiteral('default')
       )
     );
@@ -69,14 +69,10 @@ class WeixinLikePage extends JavaScriptPage {
 
         case /^catch[A-Z]/.test(node.name):
           this.addEventUidAndBeacon(path, node.name.slice(5));
-          // node.name = `catch${node.name.slice(5).toLocaleLowerCase()}`;
-          // path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
           break;
 
         case /^on[A-Z]/.test(node.name):
           this.addEventUidAndBeacon(path, node.name.slice(2));
-        // node.name = `bind${node.name.slice(2).toLocaleLowerCase()}`;
-        // path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
 
         default:
           break;
@@ -172,7 +168,6 @@ class WeixinLikePage extends JavaScriptPage {
         this.replaceAttributeName(path);
         this.replaceAssetsPath(path);
         this.replaceStyle(path);
-        // this.replaceAttributeValueLiteral(path);
       },
       JSXElement: path => {
         const openingElement = path.get('openingElement');

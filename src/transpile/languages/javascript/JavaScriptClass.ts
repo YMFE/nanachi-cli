@@ -139,7 +139,7 @@ class JavaScriptClass extends JavaScript {
 
         if (t.isJSXIdentifier(attributeName.node)) {
           const dataTypeResult = attributeName.node.name.match(
-            /^data-([a-z]+)-id/
+            /^data-([a-z]+)-uid/
           );
           if (dataTypeResult) {
             const [, type] = dataTypeResult;
