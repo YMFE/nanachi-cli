@@ -16,7 +16,8 @@
       "@resources/*": ["transpile/resources/*"],
       "@languages/*": ["transpile/languages/*"],
       "@transpiler/*": ["transpile/transpiler/*"],
-      "@platforms/*": ["transpile/platforms/*"]
+      "@platforms/*": ["transpile/platforms/*"],
+      "@services/*": ["transpile/services/*"]
     }
   }
 }

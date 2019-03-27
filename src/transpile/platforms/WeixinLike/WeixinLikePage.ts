@@ -1,20 +1,19 @@
-import generate from '@babel/generator';
 import { NodePath } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
-import JavaScriptPage from '@languages/javascript/JavaScriptPage';
+import JavaScriptClass from '@languages/javascript/JavaScriptClass';
 import { ErrorReportableResourceState } from '@resources/Resource';
+import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
+import { relative, resolve } from 'path';
 import Template from './Template';
 
-class WeixinLikePage extends JavaScriptPage {
+class WeixinLikePage extends JavaScriptClass {
   public async process() {
     await this.beforeTranspile();
-
     this.register();
-
+    this.registerExport();
     super.traverse();
-
     this.deriveTemplate();
     this.generate();
 
@@ -28,6 +27,71 @@ class WeixinLikePage extends JavaScriptPage {
   public register() {
     super.register();
     this.registerAttrName();
+  }
+
+  private get relativePathToSourceRoot() {
+    const relativePathToSourceRoot = relative(
+      this.transpiler.projectSourceDirectory,
+      this.rawPath
+    );
+
+    return relativePathToSourceRoot;
+  }
+
+  private get isComponent() {
+    return this.relativePathToSourceRoot.startsWith('components');
+  }
+
+  private get className() {
+    return this.classIdentifier.name;
+  }
+
+  private registerExport() {
+    if (this.isComponent) return this.registerNativeComponent();
+    this.registerNativePage();
+  }
+
+  private registerNativeComponent() {
+    this.registerTraverseOption({
+      ExportDefaultDeclaration: path => {
+        path.insertBefore(
+          t.expressionStatement(
+            t.callExpression(t.identifier('Component'), [
+              t.callExpression(
+                t.memberExpression(
+                  t.identifier('React'),
+                  t.identifier('registerComponent')
+                ),
+                [this.classIdentifier, t.stringLiteral(this.className)]
+              )
+            ])
+          )
+        );
+      }
+    });
+  }
+
+  private registerNativePage() {
+    this.registerTraverseOption({
+      ExportDefaultDeclaration: path => {
+        path.insertBefore(
+          t.expressionStatement(
+            t.callExpression(t.identifier('Page'), [
+              t.callExpression(
+                t.memberExpression(
+                  t.identifier('React'),
+                  t.identifier('registerPage')
+                ),
+                [
+                  this.classIdentifier,
+                  t.stringLiteral(this.relativePathToSourceRoot)
+                ]
+              )
+            ])
+          )
+        );
+      }
+    });
   }
 
   private deriveTemplate() {
@@ -151,7 +215,7 @@ class WeixinLikePage extends JavaScriptPage {
               this.error =
                 `Props "style"'s value's type should be one of ` +
                 `Identifier, MemberExpression or ObjectExpression,` +
-                ` got "${generate(expression).code}" at line ${
+                ` got "${generate(expression)}" at line ${
                   expression.loc ? expression.loc.start.line : 'unknown'
                 }`;
               reportError(this);
@@ -172,8 +236,8 @@ class WeixinLikePage extends JavaScriptPage {
       JSXElement: path => {
         const openingElement = path.get('openingElement');
         const closingElement = path.get('closingElement');
-
         const openingNode = openingElement.get('name').node;
+
         if (t.isJSXIdentifier(openingNode)) {
           const openingNodeName = openingNode.name;
 

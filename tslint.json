@@ -8,7 +8,7 @@
     "object-literal-sort-keys": false,
     "arrow-parens": false,
     "object-literal-key-quotes": false,
-    "no-implicit-dependencies": [true, ["@shared", "@commands", "@resources", "@languages", "@transpiler", "@platforms"]],
+    "no-implicit-dependencies": [true, ["@shared", "@commands", "@resources", "@languages", "@transpiler", "@platforms", "@services"]],
     "no-submodule-imports": false
   }
 }

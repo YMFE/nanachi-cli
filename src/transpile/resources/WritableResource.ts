@@ -16,10 +16,22 @@ class WritableResource extends FileResource {
     this.emit = emit;
   }
 
+  public async read() {
+    try {
+      const content = await fs.readFile(this.rawPath, this.encoding);
+
+      this.setContent(content);
+      this.state = ErrorReportableResourceState.Read;
+    } catch (e) {
+      this.state = ErrorReportableResourceState.Error;
+      this.error = e;
+    }
+  }
+
   public async write() {
     if (this.emit) {
       try {
-        await fs.outputFile(this.rawPath, this.content);
+        await fs.outputFile(this.destPath, this.content);
         this.emitted = true;
       } catch (e) {
         this.state = ErrorReportableResourceState.Error;

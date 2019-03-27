@@ -25,6 +25,11 @@ class FileResource extends Resource {
     this.parsedPath = path.parse(rawPath);
   }
 
+  public get destPath() {
+    const relativePath = this.relative(this.transpiler.projectSourceDirectory);
+    return path.resolve(this.transpiler.projectDestDirectory, relativePath);
+  }
+
   public get ext() {
     return this.parsedPath.ext;
   }

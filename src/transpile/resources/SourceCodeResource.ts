@@ -3,11 +3,11 @@ import ReadableResource from './ReadableResource';
 import { ErrorReportableResourceState } from './Resource';
 import WritableResource from './WritableResource';
 
-class SourceCodeResource extends ReadableResource {
+class SourceCodeResource extends WritableResource {
   public sourceCode: string;
   public ast: File;
   public sourceMap: object;
-  public writableResource: WritableResource;
+  public readableResource: ReadableResource;
 
   public async load() {
     this.state = ErrorReportableResourceState.Ready;

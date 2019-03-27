@@ -1,10 +1,11 @@
 import { NodePath } from '@babel/traverse';
-import t, { JSXElement } from '@babel/types';
+import t from '@babel/types';
 import { InterfaceDerivedResource } from '@resources/DerivedCodeResource';
 import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversable';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
+import platformSpecificFragments from './platformSpecificFragments';
 
 interface InterfaceTemplate extends InterfaceDerivedResource {
   renderMethod: t.ClassMethod;
@@ -24,8 +25,6 @@ class Template extends DerivedJavaScriptTraversable {
 
     this.register();
     this.traverse();
-
-    console.log(this.templateLiteral);
   }
 
   public get templateLiteral() {
@@ -54,20 +53,11 @@ class Template extends DerivedJavaScriptTraversable {
         const { node } = path;
 
         path.replaceWithMultiple(
-          transformConditionalExpression(
+          this.transformConditionalExpression(
             this.transformIfStatementToConditionalExpression(node)
           )
         );
       }
-      // ReturnStatement: path => {
-      //   const conditional = path.node.argument;
-
-      //   path.replaceWithMultiple(
-      //     transformConditionalExpression(conditional as t.ConditionalExpression)
-      //   );
-
-      //   debugger
-      // }
     });
   }
 
@@ -78,6 +68,7 @@ class Template extends DerivedJavaScriptTraversable {
 
     for (let i = 0; i < expressions.length; i++) {
       codeStr = codeStr + quasis[i].value.raw;
+
       if (i < quasis.length) {
         codeStr = codeStr + `{{${generate(expressions[i])}}}`;
       }
@@ -96,7 +87,11 @@ class Template extends DerivedJavaScriptTraversable {
 
     if (t.isCallExpression(call)) {
       const { value: id } = call.arguments[2] as t.StringLiteral;
+
       path.get('value').replaceWith(t.stringLiteral(`{{props['${id}']}}`));
+    } else {
+      const i = (path.container as any).indexOf(path.node);
+      (path.container as any).splice(i, 1);
     }
   }
 
@@ -113,6 +108,8 @@ class Template extends DerivedJavaScriptTraversable {
   }
 
   private replaceAttributeName(path: NodePath<t.JSXAttribute>) {
+    const jsxElement = path.findParent(t.isJSXElement);
+    const { openingElement } = jsxElement.node as t.JSXElement;
     const { node } = path.get('name');
 
     if (t.isJSXIdentifier(node)) {
@@ -122,7 +119,10 @@ class Template extends DerivedJavaScriptTraversable {
           break;
 
         case node.name === 'id':
-          this.addCanvasId(path);
+          if (t.isJSXIdentifier(openingElement.name, { name: 'canvas' })) {
+            this.addCanvasId(path);
+          }
+
           break;
 
         case /^catch[A-Z]/.test(node.name):
@@ -200,7 +200,7 @@ class Template extends DerivedJavaScriptTraversable {
     return leftCode + operator + rightCode;
   }
 
-  private replaceJSXElementChildren(path: NodePath<JSXElement>) {
+  private replaceJSXElementChildren(path: NodePath<t.JSXElement>) {
     const children = path.get('children');
 
     children.forEach(element => {
@@ -233,7 +233,7 @@ class Template extends DerivedJavaScriptTraversable {
 
           case t.isConditionalExpression(expression):
             element.replaceWithMultiple(
-              transformConditionalExpression(
+              this.transformConditionalExpression(
                 expression as t.ConditionalExpression
               )
             );
@@ -255,44 +255,50 @@ class Template extends DerivedJavaScriptTraversable {
     if (t.isFunctionExpression(functionNode)) {
       const [itemValueNode, itemIndexNode] = functionNode.params;
       const { body } = functionNode;
-
       const itemValueName = (itemValueNode as t.Identifier).name;
       const itemIndexName = (itemIndexNode as t.Identifier).name;
-
       const returnStatement = this.normalizeMapCallFunctionBody(body);
+      const { platform } = this.transpiler;
+
+      const attributes = [];
+      const loopForAttributeName =
+        platformSpecificFragments[platform].loopAttributeName;
+      const loopForAttributeItemName =
+        platformSpecificFragments[platform].loopAttributeItemName;
+      const loopForAttributeIndexName =
+        platformSpecificFragments[platform].loopAttributeIndexName;
+      const loopForAttributeKey =
+        platformSpecificFragments[platform].loopAttributeKey;
+      const loopForAttributeKeyNode = loopForAttributeKey();
+
+      attributes.push(
+        t.jsxAttribute(
+          loopForAttributeName(),
+          t.stringLiteral(`{{${calleeStringWithoutThis}}}`)
+        )
+      );
+
+      attributes.push(
+        t.jsxAttribute(
+          loopForAttributeItemName(),
+          t.stringLiteral(`${itemValueName}`)
+        )
+      );
+
+      attributes.push(
+        t.jsxAttribute(
+          loopForAttributeIndexName(),
+          t.stringLiteral(`${itemIndexName}`)
+        )
+      );
+
+      if (loopForAttributeKeyNode !== null) {
+        attributes.push(loopForAttributeKeyNode);
+      }
 
       call.parentPath.replaceWith(
         t.jsxElement(
-          t.jsxOpeningElement(t.jsxIdentifier('block'), [
-            t.jsxAttribute(
-              t.jsxNamespacedName(
-                t.jsxIdentifier('wx'),
-                t.jsxIdentifier('for')
-              ),
-              t.stringLiteral(`{{${calleeStringWithoutThis}}}`)
-            ),
-            t.jsxAttribute(
-              t.jsxNamespacedName(
-                t.jsxIdentifier('wx'),
-                t.jsxIdentifier('for-item')
-              ),
-              t.stringLiteral(`${itemValueName}`)
-            ),
-            t.jsxAttribute(
-              t.jsxNamespacedName(
-                t.jsxIdentifier('wx'),
-                t.jsxIdentifier('for-index')
-              ),
-              t.stringLiteral(`${itemIndexName}`)
-            ),
-            t.jsxAttribute(
-              t.jsxNamespacedName(
-                t.jsxIdentifier('wx'),
-                t.jsxIdentifier('key')
-              ),
-              t.stringLiteral('*this')
-            )
-          ]),
+          t.jsxOpeningElement(t.jsxIdentifier('block'), attributes),
           t.jsxClosingElement(t.jsxIdentifier('block')),
           [returnStatement as t.JSXElement],
           false
@@ -313,6 +319,9 @@ class Template extends DerivedJavaScriptTraversable {
         if (t.isIfStatement(node)) {
           return this.transformIfStatementToConditionalExpression(node);
         }
+        if (t.isLogicalExpression(node)) {
+          return this.transformLogicalExpressionToConditionalExpression(node);
+        }
 
       default:
         this.state = ErrorReportableResourceState.Error;
@@ -324,8 +333,15 @@ class Template extends DerivedJavaScriptTraversable {
     }
   }
 
+  private transformLogicalExpressionToConditionalExpression(
+    node: t.LogicalExpression
+  ) {
+    return t.conditionalExpression(node.left, node.right, t.nullLiteral());
+  }
+
   private transformIfStatementToConditionalExpression(node: t.IfStatement) {
     const { test, consequent, alternate } = node;
+
     return t.conditionalExpression(
       test,
       this.transformConsequent(consequent) as t.Expression,
@@ -365,47 +381,50 @@ class Template extends DerivedJavaScriptTraversable {
       return consequent;
     }
   }
-}
 
-function transformConditionalExpression(conditional: t.ConditionalExpression) {
-  const { test, consequent, alternate } = conditional;
-  const testString = generate(test);
+  private transformConditionalExpression(conditional: t.ConditionalExpression) {
+    const { test, consequent, alternate } = conditional;
+    const testString = generate(test);
 
-  const replacement = [
-    t.jsxElement(
-      t.jsxOpeningElement(t.jsxIdentifier('block'), [
-        t.jsxAttribute(
-          t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('if')),
-          t.stringLiteral(`{{${testString}}}`)
-        )
-      ]),
-      t.jsxClosingElement(t.jsxIdentifier('block')),
-      [consequent as t.JSXElement],
-      false
-    )
-  ];
-
-  if (alternate === null || !t.isNullLiteral(alternate)) {
-    const alternateJSX = t.isStringLiteral(alternate)
-      ? t.jsxText(alternate.value)
-      : alternate;
-
-    replacement.push(
+    const replacement = [
       t.jsxElement(
         t.jsxOpeningElement(t.jsxIdentifier('block'), [
           t.jsxAttribute(
-            t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('elif')),
-            t.stringLiteral('true')
+            t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('if')),
+            t.stringLiteral(`{{${testString}}}`)
           )
         ]),
         t.jsxClosingElement(t.jsxIdentifier('block')),
-        [alternateJSX as t.JSXElement],
+        [consequent as t.JSXElement],
         false
       )
-    );
-  }
+    ];
 
-  return replacement;
+    if (alternate === null || !t.isNullLiteral(alternate)) {
+      const alternateJSX = t.isStringLiteral(alternate)
+        ? t.jsxText(alternate.value)
+        : alternate;
+
+      replacement.push(
+        t.jsxElement(
+          t.jsxOpeningElement(t.jsxIdentifier('block'), [
+            t.jsxAttribute(
+              t.jsxNamespacedName(
+                t.jsxIdentifier('wx'),
+                t.jsxIdentifier('elif')
+              ),
+              t.stringLiteral('true')
+            )
+          ]),
+          t.jsxClosingElement(t.jsxIdentifier('block')),
+          [alternateJSX as t.JSXElement],
+          false
+        )
+      );
+    }
+
+    return replacement;
+  }
 }
 
 export default Template;
