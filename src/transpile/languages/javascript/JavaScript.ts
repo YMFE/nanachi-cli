@@ -1,3 +1,4 @@
+import { transformFromAstSync } from '@babel/core';
 import generate from '@babel/generator';
 import { parse, ParserOptions } from '@babel/parser';
 import traverse, { TraverseOptions } from '@babel/traverse';
@@ -36,6 +37,14 @@ class JavaScript extends SourceCodeResource {
 
   private parse() {
     this.ast = parse(this.sourceCode, this.parserOptions);
+
+    const res = transformFromAstSync(this.ast, undefined, {
+      plugins: [require('@babel/plugin-transform-regenerator')],
+      ast: true,
+      code: false
+    });
+
+    this.ast = res!.ast!;
   }
 }
 

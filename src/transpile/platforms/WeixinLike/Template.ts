@@ -3,8 +3,10 @@ import t from '@babel/types';
 import { InterfaceDerivedResource } from '@resources/DerivedCodeResource';
 import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversable';
 import { ErrorReportableResourceState } from '@resources/Resource';
+import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
+import inlineElements from './inlineElements';
 import platformSpecificFragments from './platformSpecificFragments';
 
 interface InterfaceTemplate extends InterfaceDerivedResource {
@@ -14,17 +16,22 @@ interface InterfaceTemplate extends InterfaceDerivedResource {
 class Template extends DerivedJavaScriptTraversable {
   public renderMethod: t.ClassMethod;
 
+  private usingComponents: string[] = [];
+
   constructor({ renderMethod, ...resource }: InterfaceTemplate) {
     super(resource);
 
     this.renderMethod = renderMethod;
   }
 
-  public async process() {
+  public process() {
     this.setAst(t.file(t.program([this.renderMethod.body]), [], []));
 
     this.register();
     this.traverse();
+    this.deriveJSON();
+
+    this.setContent(this.templateLiteral);
   }
 
   public get templateLiteral() {
@@ -44,7 +51,11 @@ class Template extends DerivedJavaScriptTraversable {
         }
       },
       JSXElement: path => {
+        this.transformIfNodeIsReactUseComponent(path);
         this.replaceJSXElementChildren(path);
+      },
+      JSXText: path => {
+        this.removeInlineElementText(path);
       },
       TemplateLiteral: path => {
         this.transformTemplate(path);
@@ -57,8 +68,103 @@ class Template extends DerivedJavaScriptTraversable {
             this.transformIfStatementToConditionalExpression(node)
           )
         );
+      },
+      LogicalExpression: path => {
+        const { node } = path;
+
+        path.replaceWith(
+          this.transformLogicalExpressionToConditionalExpression(node)
+        );
       }
     });
+  }
+
+  private removeInlineElementText(path: NodePath<t.JSXText>) {
+    const parentPath = path.parentPath;
+
+    if (t.isJSXElement(parentPath.node)) {
+      const { openingElement } = parentPath.node;
+
+      if (t.isJSXIdentifier(openingElement.name)) {
+        const { name } = openingElement.name;
+
+        if (inlineElements[name]) {
+          const { value } = path.node;
+          if (value) {
+            path.node.value = value.trim();
+          } else {
+            path.remove();
+          }
+        }
+      }
+    }
+  }
+
+  private deriveJSON() {
+    if (this.usingComponents.length === 0) return;
+
+    const derivedJSONObject: any = {
+      usingComponents: {}
+    };
+
+    for (const name of this.usingComponents) {
+      const tagName = `anu-${name.toLocaleLowerCase()}`;
+      const location = `/components/${name}`;
+      derivedJSONObject.usingComponents[tagName] = location;
+    }
+
+    const jsonResource = new WritableResource({
+      rawPath: this.pathWithoutExt + '.json',
+      transpiler: this.transpiler
+    });
+
+    jsonResource.setContent(JSON.stringify(derivedJSONObject, null, 4));
+
+    this.transpiler.resources.set(this.pathWithoutExt + '.json', jsonResource);
+  }
+
+  private transformIfNodeIsReactUseComponent(path: NodePath<t.JSXElement>) {
+    const {
+      node: {
+        openingElement: { attributes },
+        openingElement,
+        closingElement
+      }
+    } = path;
+
+    if (t.isJSXMemberExpression(openingElement.name)) {
+      let componentName: string = '';
+
+      for (const attribute of attributes) {
+        if (t.isJSXAttribute(attribute)) {
+          const {
+            name: { name }
+          } = attribute;
+
+          if (name === 'is') {
+            const { value } = attribute;
+
+            componentName = (value as t.StringLiteral).value;
+            this.usingComponents.push(componentName);
+          }
+
+          if (name !== 'data-instance-uid') {
+            const index = attributes.findIndex(v => v === attribute);
+
+            attributes.splice(index, 1);
+          }
+        }
+      }
+
+      const lowerComponentName = componentName.toLocaleLowerCase();
+      const tagName = `anu-${lowerComponentName}`;
+
+      openingElement.name = t.jsxIdentifier(tagName);
+
+      if (closingElement) {
+        closingElement.name = t.jsxIdentifier(tagName);
+      }
+    }
   }
 
   private transformTemplate(template: NodePath<t.TemplateLiteral>) {
@@ -89,9 +195,6 @@ class Template extends DerivedJavaScriptTraversable {
       const { value: id } = call.arguments[2] as t.StringLiteral;
 
       path.get('value').replaceWith(t.stringLiteral(`{{props['${id}']}}`));
-    } else {
-      const i = (path.container as any).indexOf(path.node);
-      (path.container as any).splice(i, 1);
     }
   }
 
@@ -174,6 +277,14 @@ class Template extends DerivedJavaScriptTraversable {
               )
             );
           break;
+
+        case t.isStringLiteral(expression):
+          path
+            .get('value')
+            .replaceWith(
+              t.stringLiteral((expression as t.StringLiteral).value)
+            );
+
         default:
           break;
       }
@@ -300,7 +411,9 @@ class Template extends DerivedJavaScriptTraversable {
         t.jsxElement(
           t.jsxOpeningElement(t.jsxIdentifier('block'), attributes),
           t.jsxClosingElement(t.jsxIdentifier('block')),
-          [returnStatement as t.JSXElement],
+          this.normalizeJSXElementChildren([
+            returnStatement as t.Node
+          ]) as t.JSXElement[],
           false
         )
       );
@@ -382,9 +495,29 @@ class Template extends DerivedJavaScriptTraversable {
     }
   }
 
-  private transformConditionalExpression(conditional: t.ConditionalExpression) {
+  private normalizeJSXElementChildren(children: t.Node[]) {
+    return children.map(child => {
+      if (t.isStringLiteral(child)) {
+        return t.jsxText(child.value);
+      }
+      if (t.isConditionalExpression(child)) {
+        return this.transformConditionalExpression(child)[0];
+      }
+      return child;
+    });
+  }
+
+  private transformConditionalExpression(
+    conditional: t.ConditionalExpression
+  ): t.JSXElement[] {
     const { test, consequent, alternate } = conditional;
-    const testString = generate(test);
+    const testString = this.replaceThis(generate(test));
+    const consequentReplacement = t.isConditionalExpression(consequent)
+      ? this.transformConditionalExpression(consequent)
+      : [consequent];
+    const alternateReplacement = t.isConditionalExpression(alternate)
+      ? this.transformConditionalExpression(alternate)
+      : [alternate];
 
     const replacement = [
       t.jsxElement(
@@ -395,15 +528,19 @@ class Template extends DerivedJavaScriptTraversable {
           )
         ]),
         t.jsxClosingElement(t.jsxIdentifier('block')),
-        [consequent as t.JSXElement],
+        this.normalizeJSXElementChildren(
+          t.isConditionalExpression(consequentReplacement)
+            ? this.transformConditionalExpression(consequentReplacement)
+            : consequentReplacement
+        ) as t.JSXElement[],
         false
       )
     ];
 
     if (alternate === null || !t.isNullLiteral(alternate)) {
       const alternateJSX = t.isStringLiteral(alternate)
-        ? t.jsxText(alternate.value)
-        : alternate;
+        ? [t.jsxText(alternate.value)]
+        : alternateReplacement;
 
       replacement.push(
         t.jsxElement(
@@ -417,7 +554,7 @@ class Template extends DerivedJavaScriptTraversable {
             )
           ]),
           t.jsxClosingElement(t.jsxIdentifier('block')),
-          [alternateJSX as t.JSXElement],
+          this.normalizeJSXElementChildren(alternateJSX) as t.JSXElement[],
           false
         )
       );

@@ -16,8 +16,6 @@ class WeixinLikePage extends JavaScriptClass {
     super.traverse();
     this.deriveTemplate();
     this.generate();
-
-    // console.log(this.content);
   }
 
   public async beforeTranspile() {
@@ -103,6 +101,8 @@ class WeixinLikePage extends JavaScriptClass {
     });
 
     template.process();
+
+    this.transpiler.resources.set(template.rawPath, template);
   }
 
   private addEventUidAndBeacon(
@@ -233,45 +233,106 @@ class WeixinLikePage extends JavaScriptClass {
         this.replaceAssetsPath(path);
         this.replaceStyle(path);
       },
-      JSXElement: path => {
-        const openingElement = path.get('openingElement');
-        const closingElement = path.get('closingElement');
-        const openingNode = openingElement.get('name').node;
+      JSXElement: {
+        enter: path => {
+          const openingElement = path.get('openingElement');
+          const closingElement = path.get('closingElement');
+          const openingNode = openingElement.get('name').node;
 
-        if (t.isJSXIdentifier(openingNode)) {
-          const openingNodeName = openingNode.name;
+          if (t.isJSXIdentifier(openingNode)) {
+            const openingNodeName = openingNode.name;
 
-          switch (openingNodeName) {
-            case 'p':
-            case 'div':
-            case 'h1':
-            case 'h2':
-            case 'h3':
-            case 'h4':
-            case 'h5':
-            case 'h6':
-            case 'quoteblock':
-              openingNode.name = 'view';
-              this.replacingClosingElementWithName(closingElement, 'view');
+            switch (openingNodeName) {
+              case 'p':
+              case 'div':
+              case 'h1':
+              case 'h2':
+              case 'h3':
+              case 'h4':
+              case 'h5':
+              case 'h6':
+              case 'quoteblock':
+                openingNode.name = 'view';
+                this.replacingClosingElementWithName(closingElement, 'view');
 
-              break;
+                break;
 
-            case 'span':
-            case 'b':
-            case 's':
-            case 'code':
-            case 'quote':
-            case 'cite':
-              openingNode.name = 'text';
-              this.replacingClosingElementWithName(closingElement, 'text');
+              case 'span':
+              case 'b':
+              case 's':
+              case 'code':
+              case 'quote':
+              case 'cite':
+                openingNode.name = 'text';
+                this.replacingClosingElementWithName(closingElement, 'text');
 
-              break;
-            default:
-              break;
+                break;
+              default:
+                break;
+            }
           }
+        },
+        exit: path => {
+          this.transformIfNodeIsComponent(path);
         }
       }
     });
+  }
+
+  private transformIfNodeIsComponent(path: NodePath<t.JSXElement>) {
+    const {
+      node: {
+        openingElement,
+        openingElement: { attributes },
+        closingElement
+      }
+    } = path;
+
+    if (t.isJSXOpeningElement(openingElement)) {
+      if (t.isJSXIdentifier(openingElement.name)) {
+        const rawName = openingElement.name.name;
+
+        if (/^[A-Z]/.test(rawName)) {
+          const useComponentNode = t.jsxMemberExpression(
+            t.jsxIdentifier('React'),
+            t.jsxIdentifier('useComponent')
+          );
+
+          openingElement.name = useComponentNode;
+
+          if (closingElement) {
+            closingElement.name = useComponentNode;
+          }
+
+          const callback = path.findParent(t.isCallExpression);
+          let instanceUidValue: t.Node;
+
+          if (callback) {
+            const { params } = (callback as any).node.arguments[0];
+            const [, indexNode] = params;
+
+            instanceUidValue = t.binaryExpression(
+              '+',
+              t.stringLiteral(uid.next()),
+              t.identifier(indexNode.name)
+            );
+          } else {
+            instanceUidValue = t.stringLiteral(uid.next());
+          }
+
+          attributes.push(
+            t.jsxAttribute(
+              t.jsxIdentifier('data-instance-uid'),
+              t.jsxExpressionContainer(instanceUidValue)
+            )
+          );
+
+          attributes.push(
+            t.jsxAttribute(t.jsxIdentifier('is'), t.stringLiteral(rawName))
+          );
+        }
+      }
+    }
   }
 
   private replacingClosingElementWithName(

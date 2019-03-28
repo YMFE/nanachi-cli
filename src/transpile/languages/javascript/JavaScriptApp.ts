@@ -1,10 +1,10 @@
 import generate from '@babel/generator';
 import t from '@babel/types';
+import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
 import reportError from '@shared/reportError';
 import JavaScriptClass from './JavaScriptClass';
-import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 
 class JavaScriptApp extends JavaScriptClass {
   private imports: t.StringLiteral[] = [];
@@ -26,6 +26,8 @@ class JavaScriptApp extends JavaScriptClass {
     this.transformConfigToObject();
 
     this.injectPages();
+
+    this.deriveJSON();
   }
 
   public async beforeTranspile() {
@@ -97,6 +99,8 @@ class JavaScriptApp extends JavaScriptClass {
         });
 
         await scriptResource.process();
+
+        this.transpiler.resources.set(location, scriptResource);
         break;
 
       default:
@@ -106,6 +110,17 @@ class JavaScriptApp extends JavaScriptClass {
 
   private get pages() {
     return this.imports.filter(({ value }) => /^(\.\/)?pages/.test(value));
+  }
+
+  private deriveJSON() {
+    const jsonResource = new WritableResource({
+      rawPath: this.pathWithoutExt + '.json',
+      transpiler: this.transpiler
+    });
+
+    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
+
+    this.transpiler.resources.set(this.pathWithoutExt + '.json', jsonResource);
   }
 
   private evalObjectSourceCode(sourceCode: string) {

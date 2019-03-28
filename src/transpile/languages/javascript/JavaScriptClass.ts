@@ -2,7 +2,6 @@ import { transformFromAstSync } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import { isMemberExpressionContainsThis } from '@shared/assert';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
@@ -62,11 +61,19 @@ class JavaScriptClass extends JavaScript {
 
         return;
       },
+      LogicalExpression: path => {
+        path.replaceWith(
+          t.conditionalExpression(
+            path.node.left,
+            path.node.right,
+            t.nullLiteral()
+          )
+        );
+      },
       ClassMethod: {
         enter: path => {
           this.classMethods.push(path.node);
-
-          return;
+          this.transformArrayMap(path);
         },
         exit: path => {
           this.transformArrayMap(path);
@@ -141,6 +148,7 @@ class JavaScriptClass extends JavaScript {
           const dataTypeResult = attributeName.node.name.match(
             /^data-([a-z]+)-uid/
           );
+
           if (dataTypeResult) {
             const [, type] = dataTypeResult;
             if (type !== 'beacon') {
@@ -168,34 +176,25 @@ class JavaScriptClass extends JavaScript {
     const callee = path.get('callee');
 
     if (t.isMemberExpression(callee.node)) {
-      const object = callee.get('object');
+      const args = path.node.arguments;
 
-      if (t.isMemberExpression(object)) {
-        if (isMemberExpressionContainsThis(callee)) {
-          const args = path.node.arguments;
+      if (args.length < 2) {
+        args.push(t.thisExpression());
+      }
 
-          if (args.length < 2) {
-            args.push(t.thisExpression());
-          }
+      const mapCallback = args[0];
 
-          const mapCallback = args[0];
+      if (t.isFunctionExpression(mapCallback)) {
+        const params = mapCallback.params;
 
-          if (t.isFunctionExpression(mapCallback)) {
-            const params = mapCallback.params;
+        if (params.length < 2) {
+          const indexUid = 'i_' + uid.next();
 
-            if (params.length < 2) {
-              const indexUid = 'i_' + uid.next();
+          this.replaceDataIdInMapCall(path, indexUid);
 
-              this.replaceDataIdInMapCall(path, indexUid);
-
-              params.push(t.identifier(indexUid));
-            } else {
-              this.replaceDataIdInMapCall(
-                path,
-                (params[1] as t.Identifier).name
-              );
-            }
-          }
+          params.push(t.identifier(indexUid));
+        } else {
+          this.replaceDataIdInMapCall(path, (params[1] as t.Identifier).name);
         }
       }
     }
@@ -223,7 +222,8 @@ class JavaScriptClass extends JavaScript {
 
       const result = transformFromAstSync(renderNode, undefined, {
         presets: [[require('@babel/preset-react'), { pragma: 'h' }]],
-        ast: true
+        ast: true,
+        code: false
       });
 
       const renderRoot = result!.ast!.program.body[0];
