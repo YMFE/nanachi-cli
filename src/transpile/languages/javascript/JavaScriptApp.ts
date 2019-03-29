@@ -4,6 +4,7 @@ import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
 import reportError from '@shared/reportError';
+import { resolve } from 'path';
 import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptApp extends JavaScriptClass {
@@ -58,7 +59,7 @@ class JavaScriptApp extends JavaScriptClass {
           this.transpiler.projectSourceDirectory
         );
 
-        await this.processWithProperClass(id, location);
+        await this.transpiler.processResource(id, location);
       } catch (error) {
         this.state = ErrorReportableResourceState.Error;
         this.error = error;
@@ -67,45 +68,6 @@ class JavaScriptApp extends JavaScriptClass {
     });
 
     await Promise.all(resourceProcessesPromise);
-  }
-
-  private async processWithProperClass(id: string, location: string) {
-    switch (true) {
-      case id === '@react':
-        const reactResource = new WritableResource({
-          rawPath: '/Users/roland_reed/Workspace/aaaa/source/ReactWX.js',
-          transpiler: this.transpiler
-        });
-
-        this.transpiler.resources.set(
-          '/Users/roland_reed/Workspace/aaaa/source/ReactWX.js',
-          reactResource
-        );
-        break;
-
-      case /\.(s?css|less)$/.test(location):
-        const styleResource = new WritableResource({
-          rawPath: location,
-          transpiler: this.transpiler
-        });
-
-        this.transpiler.resources.set(location, styleResource);
-        break;
-
-      case /\.js$/.test(location):
-        const scriptResource = new WeixinLikePage({
-          rawPath: location,
-          transpiler: this.transpiler
-        });
-
-        await scriptResource.process();
-
-        this.transpiler.resources.set(location, scriptResource);
-        break;
-
-      default:
-        break;
-    }
   }
 
   private get pages() {

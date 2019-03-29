@@ -109,8 +109,37 @@ class WeixinLikePage extends JavaScriptClass {
     path: NodePath<t.JSXAttribute>,
     eventName: string
   ) {
-    (path.findParent(t.isJSXOpeningElement)
-      .node as JSXOpeningElement).attributes.push(
+    const openingElement = path.findParent(t.isJSXOpeningElement)
+      .node as JSXOpeningElement;
+    const { name, attributes } = openingElement;
+    const eventAttribute = attributes.find(attribute => {
+      if (t.isJSXAttribute(attribute)) {
+        const { name: attributeName } = attribute;
+        if (t.isJSXIdentifier(attributeName)) {
+          const eventRegex = new RegExp(`^(on|catch)${eventName}$`);
+
+          if (eventRegex.test(attributeName.name)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+
+    if (eventName === 'Click') eventName = 'Tap';
+
+    if (t.isJSXIdentifier(name)) {
+      const nodeName = name.name;
+      if (nodeName === 'input' || nodeName === 'textarea') {
+        eventName = 'Input';
+      }
+    }
+
+    (eventAttribute! as t.JSXAttribute).name = t.jsxIdentifier(
+      `on${eventName}`
+    );
+
+    openingElement.attributes.push(
       t.jsxAttribute(
         t.jsxIdentifier(`data-${eventName.toLocaleLowerCase()}-uid`),
         t.stringLiteral(uid.next())
@@ -245,6 +274,7 @@ class WeixinLikePage extends JavaScriptClass {
             switch (openingNodeName) {
               case 'p':
               case 'div':
+              case 'li':
               case 'h1':
               case 'h2':
               case 'h3':

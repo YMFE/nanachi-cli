@@ -82,6 +82,9 @@ class JavaScriptClass extends JavaScript {
       },
       JSXEmptyExpression: path => {
         path.findParent(t.isJSXExpressionContainer).remove();
+      },
+      ImportDeclaration: path => {
+        this.reportWhenAsyncTransformFailed(this.addExternalResource, path);
       }
     });
   }
@@ -133,6 +136,26 @@ class JavaScriptClass extends JavaScript {
     }
 
     return [];
+  }
+
+  private reportWhenAsyncTransformFailed(
+    transformer: any,
+    path: NodePath<t.Node>
+  ) {
+    transformer.call(this, path).catch((error: Error) => {
+      this.state = ErrorReportableResourceState.Error;
+      this.error = error;
+      reportError(this);
+    });
+  }
+
+  private async addExternalResource(path: NodePath<t.ImportDeclaration>) {
+    const { value: id } = path.get('source').node;
+    const { location } = await this.transpiler.resolve(id, this.dir);
+
+    if (this.transpiler.resources.has(location)) return;
+
+    await this.transpiler.processResource(id, location);
   }
 
   private replaceDataIdInMapCall(

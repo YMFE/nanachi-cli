@@ -109,7 +109,8 @@ class Template extends DerivedJavaScriptTraversable {
 
     for (const name of this.usingComponents) {
       const tagName = `anu-${name.toLocaleLowerCase()}`;
-      const location = `/components/${name}`;
+      const location = `/components/${name}/index`;
+
       derivedJSONObject.usingComponents[tagName] = location;
     }
 
@@ -134,6 +135,7 @@ class Template extends DerivedJavaScriptTraversable {
 
     if (t.isJSXMemberExpression(openingElement.name)) {
       let componentName: string = '';
+      let instanceUidAttribute: t.JSXAttribute;
 
       for (const attribute of attributes) {
         if (t.isJSXAttribute(attribute)) {
@@ -148,13 +150,13 @@ class Template extends DerivedJavaScriptTraversable {
             this.usingComponents.push(componentName);
           }
 
-          if (name !== 'data-instance-uid') {
-            const index = attributes.findIndex(v => v === attribute);
-
-            attributes.splice(index, 1);
+          if (name === 'data-instance-uid') {
+            instanceUidAttribute = attribute;
           }
         }
       }
+
+      attributes.splice(0, attributes.length, instanceUidAttribute!);
 
       const lowerComponentName = componentName.toLocaleLowerCase();
       const tagName = `anu-${lowerComponentName}`;

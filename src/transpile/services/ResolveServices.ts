@@ -1,3 +1,5 @@
+import { warn } from '@shared/spinner';
+import chalk from 'chalk';
 import resolve from 'resolve';
 
 type TypeResolveCache = 'alias' | 'resolve';
@@ -15,21 +17,44 @@ interface InterfaceAlias {
 
 class ResolveServices {
   private caches: InterfaceResolveCache[] = [];
+  private aliasKeys: string[] = [];
 
   constructor(alias: InterfaceAlias = {}) {
     this.resolve = this.resolve.bind(this);
     this.initAlias(alias);
   }
 
-  public async resolve(
+  public async resolve(id: string, base: string) {
+    const hit = this.searchCache(id, base);
+
+    if (hit) return hit;
+
+    try {
+      return await this.innerResolve(id, base);
+    } catch (e) {
+      // 默认解析失败用别名重试
+    }
+
+    const maybeAlias = this.aliasKeys.find(key => id.startsWith(key));
+
+    if (maybeAlias) {
+      const replacementRegex = new RegExp(`^${maybeAlias}`);
+      const replacementId = id.replace(
+        replacementRegex,
+        this.searchCache(maybeAlias, base)!.location
+      );
+
+      return this.innerResolve(replacementId, base);
+    }
+
+    throw new Error(`Cannot resolve ${id} in ${base}`);
+  }
+
+  private async innerResolve(
     id: string,
     base: string
   ): Promise<InterfaceResolveCache> {
     return new Promise((promiseResolve, reject) => {
-      const hit = this.searchCache(id, base);
-
-      if (hit) return promiseResolve(hit);
-
       resolve(id, { basedir: base }, (err, location) => {
         if (err) return reject(err);
 
@@ -51,6 +76,15 @@ class ResolveServices {
 
   private initAlias(alias: InterfaceAlias) {
     Object.keys(alias).forEach(key => {
+      if (this.aliasKeys.find(aliasKey => aliasKey === key)) {
+        return warn(
+          chalk`{bold Duplicated alias ({yellow ${key}, alias of ${
+            alias[key]
+          }}) found.}`
+        );
+      }
+
+      this.aliasKeys.push(key);
       this.caches.push({
         id: key,
         base: '',

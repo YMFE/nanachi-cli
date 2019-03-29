@@ -1,4 +1,5 @@
 import JavaScriptApp from '@languages/javascript/JavaScriptApp';
+import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import FileResource from '@resources/FileResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
@@ -35,7 +36,10 @@ class Transpiler {
     this.projectRoot = projectRoot;
     this.platform = platform;
     this.resolveServices = new ResolveServices({
-      '@react': this.projectSourceDirectory + 'ReactWX.js'
+      '@react': this.projectSourceDirectory + 'ReactWX.js',
+      '@components': path.resolve(this.projectSourceDirectory, 'components'),
+      '@assets': path.resolve(this.projectSourceDirectory, 'assets'),
+      '@common': path.resolve(this.projectSourceDirectory, 'common')
     });
   }
 
@@ -52,6 +56,49 @@ class Transpiler {
     this.resources.forEach(resource => {
       resource.write().then(() => console.log(resource.destPath));
     });
+  }
+
+  public async processResource(id: string, location: string) {
+    switch (true) {
+      case id === '@react':
+        const reactLocation = (await this.resolve(
+          './ReactWX.js',
+          '/Users/roland_reed/Workspace/nanachi-cli/src/runtime'
+        )).location;
+        const reactResource = new WritableResource({
+          rawPath: reactLocation,
+          transpiler: this
+        });
+
+        reactResource.setCustomDestPath(
+          path.resolve(this.projectDestDirectory, 'ReactWX.js')
+        );
+        this.resources.set(reactLocation, reactResource);
+        break;
+
+      case /\.(s?css|less)$/.test(location):
+        const styleResource = new WritableResource({
+          rawPath: location,
+          transpiler: this
+        });
+
+        this.resources.set(location, styleResource);
+        break;
+
+      case /\.js$/.test(location):
+        const scriptResource = new WeixinLikePage({
+          rawPath: location,
+          transpiler: this
+        });
+
+        await scriptResource.process();
+
+        this.resources.set(location, scriptResource);
+        break;
+
+      default:
+        break;
+    }
   }
 
   public get projectSourceDirectory() {

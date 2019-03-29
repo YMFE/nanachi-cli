@@ -9,6 +9,7 @@ class FileResource extends Resource {
   public rawPath: string;
 
   private parsedPath: path.ParsedPath;
+  private customDestPath: string;
 
   constructor({ rawPath, ...resource }: InterfaceFileResource) {
     super(resource);
@@ -17,8 +18,16 @@ class FileResource extends Resource {
     this.rawPath = rawPath;
   }
 
-  public relative(from: string) {
+  public relativeFromSource(from: string) {
     return path.relative(from, this.rawPath);
+  }
+
+  public relativeFromDest(from: string) {
+    return path.relative(from, this.destPath);
+  }
+
+  public setCustomDestPath(destPath: string) {
+    this.customDestPath = destPath;
   }
 
   private init(rawPath: string) {
@@ -26,7 +35,9 @@ class FileResource extends Resource {
   }
 
   public get destPath() {
-    const relativePath = this.relative(this.transpiler.projectSourceDirectory);
+    if (this.customDestPath) return this.customDestPath;
+
+    const relativePath = this.relativeFromSource(this.transpiler.projectSourceDirectory);
     return path.resolve(this.transpiler.projectDestDirectory, relativePath);
   }
 
