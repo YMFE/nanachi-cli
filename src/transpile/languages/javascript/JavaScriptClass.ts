@@ -23,7 +23,7 @@ class JavaScriptClass extends JavaScript {
     this.registerTransformClassToFunction();
   }
 
-  public registerTransformClassToFunction() {
+  private registerTransformClassToFunction() {
     this.registerTraverseOption({
       ClassDeclaration: {
         enter: path => {

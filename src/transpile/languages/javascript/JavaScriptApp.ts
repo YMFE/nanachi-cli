@@ -4,7 +4,6 @@ import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
 import reportError from '@shared/reportError';
-import { resolve } from 'path';
 import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptApp extends JavaScriptClass {
@@ -82,7 +81,7 @@ class JavaScriptApp extends JavaScriptClass {
 
     jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
 
-    this.transpiler.resources.set(this.pathWithoutExt + '.json', jsonResource);
+    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
 
   private evalObjectSourceCode(sourceCode: string) {

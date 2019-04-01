@@ -1,11 +1,12 @@
 import { NodePath } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
+import Stateless from '@languages/javascript/Stateless';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
-import { relative, resolve } from 'path';
+import { relative } from 'path';
 import Template from './Template';
 
 class WeixinLikePage extends JavaScriptClass {
@@ -13,9 +14,14 @@ class WeixinLikePage extends JavaScriptClass {
     await this.beforeTranspile();
     this.register();
     this.registerExport();
-    super.traverse();
-    this.deriveTemplate();
-    this.generate();
+
+    try {
+      super.traverse();
+      this.deriveTemplate();
+      this.generate();
+    } catch (e) {
+      await this.replaceWithStatelessWhenComponentIsStateless();
+    }
   }
 
   public async beforeTranspile() {
@@ -47,6 +53,18 @@ class WeixinLikePage extends JavaScriptClass {
   private registerExport() {
     if (this.isComponent) return this.registerNativeComponent();
     this.registerNativePage();
+  }
+
+  private async replaceWithStatelessWhenComponentIsStateless() {
+    if (this.classIdentifier) return;
+
+    const stateless = new Stateless({
+      rawPath: this.rawPath,
+      transpiler: this.transpiler
+    });
+
+    await stateless.process();
+    this.transpiler.addResource(this.rawPath, stateless);
   }
 
   private registerNativeComponent() {
@@ -102,7 +120,7 @@ class WeixinLikePage extends JavaScriptClass {
 
     template.process();
 
-    this.transpiler.resources.set(template.rawPath, template);
+    this.transpiler.addResource(template.rawPath, template);
   }
 
   private addEventUidAndBeacon(

@@ -10,11 +10,11 @@ import inlineElements from './inlineElements';
 import platformSpecificFragments from './platformSpecificFragments';
 
 interface InterfaceTemplate extends InterfaceDerivedResource {
-  renderMethod: t.ClassMethod;
+  renderMethod: t.ClassMethod | t.FunctionDeclaration;
 }
 
 class Template extends DerivedJavaScriptTraversable {
-  public renderMethod: t.ClassMethod;
+  public renderMethod: t.ClassMethod | t.FunctionDeclaration;
 
   private usingComponents: string[] = [];
 
@@ -121,7 +121,7 @@ class Template extends DerivedJavaScriptTraversable {
 
     jsonResource.setContent(JSON.stringify(derivedJSONObject, null, 4));
 
-    this.transpiler.resources.set(this.pathWithoutExt + '.json', jsonResource);
+    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
 
   private transformIfNodeIsReactUseComponent(path: NodePath<t.JSXElement>) {
@@ -438,10 +438,33 @@ class Template extends DerivedJavaScriptTraversable {
           return this.transformLogicalExpressionToConditionalExpression(node);
         }
 
+      case 2:
+        const [mayBeIfStatement, mayBeReturnStatement] = body.body as any;
+
+        if (
+          t.isIfStatement(mayBeIfStatement) &&
+          t.isReturnStatement(mayBeReturnStatement) &&
+          mayBeIfStatement.alternate === null
+        ) {
+          mayBeIfStatement.alternate = t.blockStatement([mayBeReturnStatement]);
+          return this.transformIfStatementToConditionalExpression(
+            mayBeIfStatement
+          );
+        } else {
+          this.state = ErrorReportableResourceState.Error;
+          this.error = new Error(
+            'In `render` method, if there are 2 nodes, the first must be a IfStatement without `else`' +
+              'and the second must be a ReturnStatement.'
+          );
+          reportError(this);
+          break;
+        }
+
       default:
         this.state = ErrorReportableResourceState.Error;
         this.error = new Error(
-          'There should only be only one ReturnStatement or IfStatement in the body of`render`'
+          'There should only be only one ReturnStatement or IfStatement, ' +
+            'or one IfStatement following with a ReturnStatement in the body of`render`'
         );
         reportError(this);
         break;

@@ -48,14 +48,19 @@ class Transpiler {
       rawPath: this.appEntryPath,
       transpiler: this
     });
-    this.resources.set(this.appEntryPath, app);
+    this.addResource(this.appEntryPath, app);
 
     await app.process();
 
     this.check();
-    this.resources.forEach(resource => {
-      resource.write().then(() => console.log(resource.destPath));
-    });
+    await this.emit();
+  }
+
+  public addResource(rawPath: string, resource: WritableResource) {
+    resource.emit = true;
+    resource.emitted = false;
+    this.resources.set(rawPath, resource);
+    this.emit();
   }
 
   public async processResource(id: string, location: string) {
@@ -63,7 +68,7 @@ class Transpiler {
       case id === '@react':
         const reactLocation = (await this.resolve(
           './ReactWX.js',
-          '/Users/roland_reed/Workspace/nanachi-cli/src/runtime'
+          '/Users/roland_reed/Workspace/aaaa/source'
         )).location;
         const reactResource = new WritableResource({
           rawPath: reactLocation,
@@ -73,7 +78,7 @@ class Transpiler {
         reactResource.setCustomDestPath(
           path.resolve(this.projectDestDirectory, 'ReactWX.js')
         );
-        this.resources.set(reactLocation, reactResource);
+        this.addResource(reactLocation, reactResource);
         break;
 
       case /\.(s?css|less)$/.test(location):
@@ -82,18 +87,26 @@ class Transpiler {
           transpiler: this
         });
 
-        this.resources.set(location, styleResource);
+        this.addResource(location, styleResource);
         break;
 
       case /\.js$/.test(location):
-        const scriptResource = new WeixinLikePage({
+        const resourceConfig = {
           rawPath: location,
           transpiler: this
-        });
+        };
+        const isPageOrClass = this.isPageOrClass(location);
+        const scriptResource = isPageOrClass
+          ? new WeixinLikePage(resourceConfig)
+          : new WritableResource(resourceConfig);
 
-        await scriptResource.process();
+        if (isPageOrClass) {
+          await (scriptResource as WeixinLikePage).process();
+        } else {
+          await (scriptResource as WritableResource).read();
+        }
 
-        this.resources.set(location, scriptResource);
+        this.addResource(location, scriptResource);
         break;
 
       default:
@@ -115,6 +128,31 @@ class Transpiler {
 
   private get appEntryPath() {
     return path.resolve(this.projectRoot, sourceCodeDirName, appEntryFileName);
+  }
+
+  private async emit() {
+    const resourcePool = Array.from(this.resources, ([, resource]) => resource);
+    const changedResources = resourcePool.filter(resource => resource.emit);
+    const emitPool = changedResources.map(async resource => {
+      try {
+        await resource.write();
+        resource.emitted = true;
+        resource.emit = false;
+      } catch (error) {
+        resource.state = ErrorReportableResourceState.Error;
+        resource.error = error;
+      }
+    });
+
+    await emitPool;
+  }
+
+  private isPageOrClass(location: string) {
+    const regex = new RegExp(
+      `^${this.projectSourceDirectory}/(pages|components)`
+    );
+
+    return regex.test(location);
   }
 
   private hasError() {
