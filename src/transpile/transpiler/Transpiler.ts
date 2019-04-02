@@ -126,21 +126,26 @@ class Transpiler {
     return this.resolveServices.resolve;
   }
 
+  public get resolveSync() {
+    return this.resolveServices.resolveSync;
+  }
+
   private get appEntryPath() {
     return path.resolve(this.projectRoot, sourceCodeDirName, appEntryFileName);
   }
 
   private async emit() {
     const resourcePool = Array.from(this.resources, ([, resource]) => resource);
-    const changedResources = resourcePool.filter(resource => resource.emit);
+    const changedResources = resourcePool.filter(
+      resource => resource.emit && !resource.emitted
+    );
     const emitPool = changedResources.map(async resource => {
       try {
         await resource.write();
-        resource.emitted = true;
-        resource.emit = false;
       } catch (error) {
         resource.state = ErrorReportableResourceState.Error;
         resource.error = error;
+        reportError(resource);
       }
     });
 

@@ -21,6 +21,7 @@ class ResolveServices {
 
   constructor(alias: InterfaceAlias = {}) {
     this.resolve = this.resolve.bind(this);
+    this.resolveSync = this.resolveSync.bind(this);
     this.initAlias(alias);
   }
 
@@ -50,6 +51,55 @@ class ResolveServices {
     throw new Error(`Cannot resolve ${id} in ${base}`);
   }
 
+  public resolveSync(id: string, base: string) {
+    const hit = this.searchCache(id, base);
+
+    if (hit) return hit;
+
+    const resolvedId = this.resolveAlias(id, base);
+
+    return this.innerResolveSync(resolvedId, base);
+  }
+
+  private resolveAlias(id: string, base: string) {
+    const maybeAlias = this.aliasKeys.find(key => id.startsWith(key));
+
+    if (maybeAlias) {
+      const replacementRegex = new RegExp(`^${maybeAlias}`);
+      const replacementId = id.replace(
+        replacementRegex,
+        this.searchCache(maybeAlias, base)!.location
+      );
+
+      return replacementId;
+    }
+
+    return id;
+  }
+
+  private innerResolveSync(id: string, base: string) {
+    const location = resolve.sync(id, { basedir: base });
+    const result = this.buildResolveResult(id, base, location);
+    this.caches.push(result);
+    return result;
+  }
+
+  private buildResolveResult(
+    id: string,
+    base: string,
+    location: string,
+    type: TypeResolveCache = 'resolve'
+  ) {
+    const resolveResult: InterfaceResolveCache = {
+      id,
+      base,
+      location,
+      type
+    };
+
+    return resolveResult;
+  }
+
   private async innerResolve(
     id: string,
     base: string
@@ -60,12 +110,7 @@ class ResolveServices {
 
         if (location === undefined) return reject(err);
 
-        const resolveResult: InterfaceResolveCache = {
-          id,
-          base,
-          location,
-          type: 'resolve'
-        };
+        const resolveResult = this.buildResolveResult(id, base, location);
 
         promiseResolve(resolveResult);
 
@@ -85,12 +130,7 @@ class ResolveServices {
       }
 
       this.aliasKeys.push(key);
-      this.caches.push({
-        id: key,
-        base: '',
-        location: alias[key],
-        type: 'alias'
-      });
+      this.caches.push(this.buildResolveResult(key, '', alias[key], 'alias'));
     });
   }
 

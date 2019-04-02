@@ -5,6 +5,7 @@ import { ErrorReportableResourceState } from '@resources/Resource';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
+import { relative } from 'path';
 import JavaScript from './JavaScript';
 
 class JavaScriptClass extends JavaScript {
@@ -84,7 +85,8 @@ class JavaScriptClass extends JavaScript {
         path.findParent(t.isJSXExpressionContainer).remove();
       },
       ImportDeclaration: path => {
-        this.reportWhenAsyncTransformFailed(this.addExternalResource, path);
+        this.addExternalResource(path);
+        // this.reportWhenAsyncTransformFailed(this.addExternalResource, path);
       }
     });
   }
@@ -149,13 +151,14 @@ class JavaScriptClass extends JavaScript {
     });
   }
 
-  private async addExternalResource(path: NodePath<t.ImportDeclaration>) {
+  private addExternalResource(path: NodePath<t.ImportDeclaration>) {
     const { value: id } = path.get('source').node;
-    const { location } = await this.transpiler.resolve(id, this.dir);
+    const { location } = this.transpiler.resolveSync(id, this.dir)!;
+    path.get('source').node.value = relative(this.dir, location);
 
     if (this.transpiler.resources.has(location)) return;
 
-    await this.transpiler.processResource(id, location);
+    this.transpiler.processResource(id, location);
   }
 
   private replaceDataIdInMapCall(

@@ -31,6 +31,7 @@ class WritableResource extends FileResource {
   public async write() {
     if (this.emit) {
       try {
+        this.emit = false;
         await fs.outputFile(this.destPath, this.content);
         this.emitted = true;
       } catch (e) {
