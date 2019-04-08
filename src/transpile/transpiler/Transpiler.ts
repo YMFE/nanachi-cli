@@ -19,7 +19,7 @@ export const enum Platforms {
   ali = 'ali'
 }
 
-export interface InterfaceTranspiler {
+export interface ITranspiler {
   projectRoot: string;
   platform: Platforms;
 }
@@ -32,7 +32,7 @@ class Transpiler {
 
   private resolveServices: ResolveServices;
 
-  constructor({ projectRoot, platform }: InterfaceTranspiler) {
+  constructor({ projectRoot, platform }: ITranspiler) {
     this.projectRoot = projectRoot;
     this.platform = platform;
     this.resolveServices = new ResolveServices({
@@ -78,6 +78,7 @@ class Transpiler {
         reactResource.setCustomDestPath(
           path.resolve(this.projectDestDirectory, 'ReactWX.js')
         );
+        await reactResource.read();
         this.addResource(reactLocation, reactResource);
         break;
 

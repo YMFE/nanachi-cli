@@ -1,6 +1,6 @@
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
-import { InterfaceDerivedResource } from '@resources/DerivedCodeResource';
+import { IDerivedResource } from '@resources/DerivedCodeResource';
 import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversable';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
@@ -9,7 +9,7 @@ import reportError from '@shared/reportError';
 import inlineElements from './inlineElements';
 import platformSpecificFragments from './platformSpecificFragments';
 
-interface InterfaceTemplate extends InterfaceDerivedResource {
+interface ITemplate extends IDerivedResource {
   renderMethod: t.ClassMethod | t.FunctionDeclaration;
 }
 
@@ -18,7 +18,7 @@ class Template extends DerivedJavaScriptTraversable {
 
   private usingComponents: string[] = [];
 
-  constructor({ renderMethod, ...resource }: InterfaceTemplate) {
+  constructor({ renderMethod, ...resource }: ITemplate) {
     super(resource);
 
     this.renderMethod = renderMethod;

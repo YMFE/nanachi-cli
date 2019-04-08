@@ -25,6 +25,8 @@ class JavaScript extends SourceCodeResource {
   public generate() {
     const { code } = generate(this.ast);
     this.setContent(code);
+    this.emit = true;
+    this.emitted = false;
   }
 
   private initOptions() {

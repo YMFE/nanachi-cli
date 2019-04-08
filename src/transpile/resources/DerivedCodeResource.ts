@@ -1,16 +1,16 @@
 import SourceCodeResource from './SourceCodeResource';
 import WritableResource, {
-  InterfaceWritableResource
+  IWritableResource
 } from './WritableResource';
 
-export interface InterfaceDerivedResource extends InterfaceWritableResource {
+export interface IDerivedResource extends IWritableResource {
   creator: SourceCodeResource;
 }
 
 class DerivedCodeResource extends WritableResource {
   public creator: SourceCodeResource;
 
-  constructor({ creator, ...resource }: InterfaceDerivedResource) {
+  constructor({ creator, ...resource }: IDerivedResource) {
     super(resource);
     this.creator = creator;
   }

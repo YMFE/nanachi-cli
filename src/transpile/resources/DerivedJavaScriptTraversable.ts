@@ -2,11 +2,11 @@ import generate from '@babel/generator';
 import traverse, { TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
 import DerivedCodeResource, {
-  InterfaceDerivedResource
+  IDerivedResource
 } from './DerivedCodeResource';
 import SourceCodeResource from './SourceCodeResource';
 
-export interface InterfaceDerivedJavaScript extends InterfaceDerivedResource {
+export interface IDerivedJavaScript extends IDerivedResource {
   creator: SourceCodeResource;
 }
 

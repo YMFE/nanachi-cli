@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import FileResource, { InterfaceFileResource } from './FileResource';
 import { ErrorReportableResourceState } from './Resource';
 
-export interface InterfaceWritableResource extends InterfaceFileResource {
+export interface IWritableResource extends InterfaceFileResource {
   emit?: boolean;
 }
 
@@ -10,7 +10,7 @@ class WritableResource extends FileResource {
   public emit: boolean;
   public emitted: boolean = false;
 
-  constructor({ emit = true, ...resource }: InterfaceWritableResource) {
+  constructor({ emit = true, ...resource }: IWritableResource) {
     super(resource);
 
     this.emit = emit;
