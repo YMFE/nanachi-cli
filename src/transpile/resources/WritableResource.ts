@@ -1,8 +1,8 @@
 import fs from 'fs-extra';
-import FileResource, { InterfaceFileResource } from './FileResource';
+import FileResource, { IFileResource } from './FileResource';
 import { ErrorReportableResourceState } from './Resource';
 
-export interface IWritableResource extends InterfaceFileResource {
+export interface IWritableResource extends IFileResource {
   emit?: boolean;
 }
 

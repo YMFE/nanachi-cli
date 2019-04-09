@@ -2,6 +2,7 @@ import { transformFromAstSync } from '@babel/core';
 import generate from '@babel/generator';
 import { parse, ParserOptions } from '@babel/parser';
 import traverse, { TraverseOptions } from '@babel/traverse';
+import t from '@babel/types';
 import SourceCodeResource from '@resources/SourceCodeResource';
 
 class JavaScript extends SourceCodeResource {
@@ -12,10 +13,15 @@ class JavaScript extends SourceCodeResource {
     await super.load();
     this.initOptions();
     this.parse();
+    this.replaceEnvironment();
   }
 
   public registerTraverseOption(options: TraverseOptions) {
     this.traverseOptions = { ...this.traverseOptions, ...options };
+  }
+
+  public resetTraverseOptions() {
+    this.traverseOptions = {};
   }
 
   public traverse() {
@@ -27,6 +33,12 @@ class JavaScript extends SourceCodeResource {
     this.setContent(code);
     this.emit = true;
     this.emitted = false;
+  }
+
+  private replaceEnvironment() {
+    this.registerReplaceEnvironment();
+    this.traverse();
+    this.traverseOptions = {};
   }
 
   private initOptions() {
@@ -47,6 +59,26 @@ class JavaScript extends SourceCodeResource {
     });
 
     this.ast = res!.ast!;
+  }
+
+  private registerReplaceEnvironment() {
+    this.registerTraverseOption({
+      MemberExpression: path => {
+        const { object, property } = path.node;
+
+        if (t.isIdentifier(property, { name: 'ANU_ENV' })) {
+          if (t.isMemberExpression(object)) {
+            const { object: subObject, property: subProperty } = object;
+
+            if (t.isIdentifier(subProperty, { name: 'env' })) {
+              if (t.isIdentifier(subObject, { name: 'process' })) {
+                path.replaceWith(t.stringLiteral('wx'));
+              }
+            }
+          }
+        }
+      }
+    });
   }
 }
 

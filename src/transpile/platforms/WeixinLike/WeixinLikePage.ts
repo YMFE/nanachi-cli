@@ -17,7 +17,12 @@ class WeixinLikePage extends JavaScriptClass {
 
     try {
       super.traverse();
+      this.removeAllImports();
+      // super.injectReactLibrary();
       this.deriveTemplate();
+      this.transformConfigToObject();
+      this.replaceNavigationBarTextStyle();
+      this.deriveJSON();
       this.generate();
     } catch (e) {
       await this.replaceWithStatelessWhenComponentIsStateless();
@@ -31,6 +36,12 @@ class WeixinLikePage extends JavaScriptClass {
   public register() {
     super.register();
     this.registerAttrName();
+  }
+
+  private removeAllImports() {
+    this.resetTraverseOptions();
+    this.registerRemoveImport();
+    this.traverse();
   }
 
   private get relativePathToSourceRoot() {
@@ -55,6 +66,15 @@ class WeixinLikePage extends JavaScriptClass {
     this.registerNativePage();
   }
 
+  private replaceNavigationBarTextStyle() {
+    if (this.isComponent) return;
+
+    const key = 'navigationBarTextStyle';
+    const color = this.configObject[key];
+
+    this.configObject[key] = color === '#fff' ? 'white' : 'black';
+  }
+
   private async replaceWithStatelessWhenComponentIsStateless() {
     if (this.classIdentifier) return;
 
@@ -65,6 +85,18 @@ class WeixinLikePage extends JavaScriptClass {
 
     await stateless.process();
     this.transpiler.addResource(this.rawPath, stateless);
+  }
+
+  private registerRemoveImport() {
+    this.registerTraverseOption({
+      ImportDeclaration: path => {
+        const id = path.node.source.value;
+
+        if (id.endsWith('.scss')) {
+          path.remove();
+        }
+      }
+    });
   }
 
   private registerNativeComponent() {
@@ -111,11 +143,16 @@ class WeixinLikePage extends JavaScriptClass {
   }
 
   private deriveTemplate() {
+    this.configObject = this.isComponent
+      ? { component: true }
+      : this.configObject;
+
     const template = new Template({
       renderMethod: this.renderMethod,
       creator: this,
       rawPath: this.pathWithoutExt + '.wxml',
-      transpiler: this.transpiler
+      transpiler: this.transpiler,
+      configObject: this.configObject
     });
 
     template.process();
@@ -198,10 +235,13 @@ class WeixinLikePage extends JavaScriptClass {
     if (t.isJSXIdentifier(attributeName)) {
       if (attributeName.name === 'src') {
         if (t.isStringLiteral(attributeValue)) {
-          if (attributeValue.value.startsWith('@assets')) {
-            // console.log('local: ', attributeValue.value);
-          } else {
+          if (/^https?:\/\//.test(attributeValue.value)) {
             // console.log('remote: ', attributeValue.value);
+          } else {
+            // console.log('local: ', attributeValue.value);
+            const id = attributeValue.value;
+            const { location } = this.transpiler.resolveSync(id, this.dir);
+            attributeValue.value = location;
           }
         }
       }

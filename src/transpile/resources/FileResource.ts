@@ -1,7 +1,7 @@
 import path from 'path';
 import Resource, { InterfaceResource } from './Resource';
 
-export interface InterfaceFileResource extends InterfaceResource {
+export interface IFileResource extends InterfaceResource {
   rawPath: string;
 }
 
@@ -11,7 +11,7 @@ class FileResource extends Resource {
   private parsedPath: path.ParsedPath;
   private customDestPath: string;
 
-  constructor({ rawPath, ...resource }: InterfaceFileResource) {
+  constructor({ rawPath, ...resource }: IFileResource) {
     super(resource);
 
     this.init(rawPath);

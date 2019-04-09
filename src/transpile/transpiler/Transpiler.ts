@@ -6,6 +6,7 @@ import WritableResource from '@resources/WritableResource';
 import ResolveServices from '@services/ResolveServices';
 import reportError from '@shared/reportError';
 import path from 'path';
+import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 
 const appEntryFileName = 'app.js';
 const sourceCodeDirName = 'source';
@@ -36,7 +37,7 @@ class Transpiler {
     this.projectRoot = projectRoot;
     this.platform = platform;
     this.resolveServices = new ResolveServices({
-      '@react': this.projectSourceDirectory + 'ReactWX.js',
+      '@react': path.resolve(this.projectSourceDirectory, 'ReactWX.js'),
       '@components': path.resolve(this.projectSourceDirectory, 'components'),
       '@assets': path.resolve(this.projectSourceDirectory, 'assets'),
       '@common': path.resolve(this.projectSourceDirectory, 'common')
@@ -57,6 +58,7 @@ class Transpiler {
   }
 
   public addResource(rawPath: string, resource: WritableResource) {
+    if (this.resources.has(rawPath)) return;
     resource.emit = true;
     resource.emitted = false;
     this.resources.set(rawPath, resource);
@@ -99,13 +101,15 @@ class Transpiler {
         const isPageOrClass = this.isPageOrClass(location);
         const scriptResource = isPageOrClass
           ? new WeixinLikePage(resourceConfig)
-          : new WritableResource(resourceConfig);
+          : new PlainJavaScript(resourceConfig);
 
-        if (isPageOrClass) {
-          await (scriptResource as WeixinLikePage).process();
-        } else {
-          await (scriptResource as WritableResource).read();
-        }
+        await scriptResource.process();
+
+        // if (isPageOrClass) {
+        //   await (scriptResource as WeixinLikePage).process();
+        // } else {
+        //   await (scriptResource as WritableResource).read();
+        // }
 
         this.addResource(location, scriptResource);
         break;

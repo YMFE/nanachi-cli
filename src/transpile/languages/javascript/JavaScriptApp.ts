@@ -1,14 +1,11 @@
-import generate from '@babel/generator';
 import t from '@babel/types';
-import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import reportError from '@shared/reportError';
+import { relative } from 'path';
 import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptApp extends JavaScriptClass {
   private imports: t.StringLiteral[] = [];
-  private configObject: { [property: string]: any };
 
   public async process() {
     this.reset();
@@ -20,6 +17,8 @@ class JavaScriptApp extends JavaScriptClass {
     this.traverse();
 
     await this.processResources();
+
+    this.injectReactLibrary();
 
     super.generate();
 
@@ -71,37 +70,6 @@ class JavaScriptApp extends JavaScriptClass {
 
   private get pages() {
     return this.imports.filter(({ value }) => /^(\.\/)?pages/.test(value));
-  }
-
-  private deriveJSON() {
-    const jsonResource = new WritableResource({
-      rawPath: this.pathWithoutExt + '.json',
-      transpiler: this.transpiler
-    });
-
-    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
-
-    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
-  }
-
-  private evalObjectSourceCode(sourceCode: string) {
-    'use strict';
-    // tslint:disable-next-line: no-eval
-    return eval(`(${sourceCode})`);
-  }
-
-  private transformConfigToObject() {
-    let config = {};
-
-    if (this.configProperty) {
-      const [, property] = this.configProperty;
-
-      if (t.isObjectExpression(property)) {
-        config = this.evalObjectSourceCode(generate(property).code);
-      }
-    }
-
-    this.configObject = config;
   }
 
   private injectPages() {

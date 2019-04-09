@@ -2,6 +2,8 @@ import { transformFromAstSync } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import { ErrorReportableResourceState } from '@resources/Resource';
+import WritableResource from '@resources/WritableResource';
+import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
@@ -11,6 +13,7 @@ import JavaScript from './JavaScript';
 class JavaScriptClass extends JavaScript {
   public classIdentifier: t.Identifier;
   public renderMethod: t.ClassMethod;
+  public configObject: any = {};
 
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
   private classMethods: t.ClassMethod[] = [];
@@ -22,6 +25,49 @@ class JavaScriptClass extends JavaScript {
 
   public register() {
     this.registerTransformClassToFunction();
+  }
+
+  public evalObjectSourceCode(sourceCode: string) {
+    'use strict';
+    // tslint:disable-next-line: no-eval
+    return eval(`(${sourceCode})`);
+  }
+
+  public transformConfigToObject() {
+    if (this.configProperty) {
+      const [, property] = this.configProperty;
+
+      if (t.isObjectExpression(property)) {
+        this.configObject = {
+          ...this.configObject,
+          ...this.evalObjectSourceCode(generate(property))
+        };
+      }
+    }
+  }
+
+  public deriveJSON() {
+    const jsonResource = new WritableResource({
+      rawPath: this.pathWithoutExt + '.json',
+      transpiler: this.transpiler
+    });
+
+    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
+
+    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
+  }
+
+  public injectReactLibrary() {
+    const { location } = this.transpiler.resolveSync('@react', this.dir);
+    const relativeReactLibraryPath = relative(this.dir, location);
+    const normalizedReactLibraryPath = relativeReactLibraryPath.startsWith('.')
+      ? relativeReactLibraryPath
+      : `./${relativeReactLibraryPath}`;
+    const importNode = t.importDeclaration(
+      [t.importDefaultSpecifier(t.identifier('React'))],
+      t.stringLiteral(normalizedReactLibraryPath)
+    );
+    this.ast.program.body.unshift(importNode);
   }
 
   private registerTransformClassToFunction() {
@@ -86,7 +132,6 @@ class JavaScriptClass extends JavaScript {
       },
       ImportDeclaration: path => {
         this.addExternalResource(path);
-        // this.reportWhenAsyncTransformFailed(this.addExternalResource, path);
       }
     });
   }
@@ -138,17 +183,6 @@ class JavaScriptClass extends JavaScript {
     }
 
     return [];
-  }
-
-  private reportWhenAsyncTransformFailed(
-    transformer: any,
-    path: NodePath<t.Node>
-  ) {
-    transformer.call(this, path).catch((error: Error) => {
-      this.state = ErrorReportableResourceState.Error;
-      this.error = error;
-      reportError(this);
-    });
   }
 
   private addExternalResource(path: NodePath<t.ImportDeclaration>) {

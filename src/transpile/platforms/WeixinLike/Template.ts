@@ -3,7 +3,6 @@ import t from '@babel/types';
 import { IDerivedResource } from '@resources/DerivedCodeResource';
 import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversable';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import inlineElements from './inlineElements';
@@ -11,17 +10,20 @@ import platformSpecificFragments from './platformSpecificFragments';
 
 interface ITemplate extends IDerivedResource {
   renderMethod: t.ClassMethod | t.FunctionDeclaration;
+  configObject?: any;
 }
 
 class Template extends DerivedJavaScriptTraversable {
   public renderMethod: t.ClassMethod | t.FunctionDeclaration;
 
   private usingComponents: string[] = [];
+  private configObject: any = null;
 
-  constructor({ renderMethod, ...resource }: ITemplate) {
+  constructor({ renderMethod, configObject, ...resource }: ITemplate) {
     super(resource);
 
     this.renderMethod = renderMethod;
+    this.configObject = configObject;
   }
 
   public process() {
@@ -101,27 +103,16 @@ class Template extends DerivedJavaScriptTraversable {
   }
 
   private deriveJSON() {
-    if (this.usingComponents.length === 0) return;
-
-    const derivedJSONObject: any = {
-      usingComponents: {}
-    };
+    if (this.configObject === null) return;
 
     for (const name of this.usingComponents) {
       const tagName = `anu-${name.toLocaleLowerCase()}`;
       const location = `/components/${name}/index`;
 
-      derivedJSONObject.usingComponents[tagName] = location;
+      this.configObject.usingComponents =
+        this.configObject.usingComponents || {};
+      this.configObject.usingComponents[tagName] = location;
     }
-
-    const jsonResource = new WritableResource({
-      rawPath: this.pathWithoutExt + '.json',
-      transpiler: this.transpiler
-    });
-
-    jsonResource.setContent(JSON.stringify(derivedJSONObject, null, 4));
-
-    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
 
   private transformIfNodeIsReactUseComponent(path: NodePath<t.JSXElement>) {

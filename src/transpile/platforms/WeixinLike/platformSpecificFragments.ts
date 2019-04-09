@@ -66,18 +66,18 @@ function buLoopKeyAttribute() {
 type TypeAttributeNameFragment = () => t.JSXNamespacedName | t.JSXIdentifier;
 type TypeAttributeFragment = () => t.JSXAttribute | null;
 
-interface InterfacePlatformFragment {
+interface IPlatformFragment {
   loopAttributeName: TypeAttributeNameFragment;
   loopAttributeItemName: TypeAttributeNameFragment;
   loopAttributeIndexName: TypeAttributeNameFragment;
   loopAttributeKey: TypeAttributeFragment;
 }
 
-interface InterfacePlatformFragments {
-  [platform: string]: InterfacePlatformFragment;
+interface IPlatformFragments {
+  [platform: string]: IPlatformFragment;
 }
 
-const PlatformFragments: InterfacePlatformFragments = {
+const PlatformFragments: IPlatformFragments = {
   wx: {
     loopAttributeName: wxLoopForAttributeName,
     loopAttributeItemName: wxLoopForItemAttributeName,
