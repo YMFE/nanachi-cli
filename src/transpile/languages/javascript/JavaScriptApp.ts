@@ -9,23 +9,14 @@ class JavaScriptApp extends JavaScriptClass {
 
   public async process() {
     this.reset();
-
     await this.beforeTranspile();
-
     this.register();
-
     this.traverse();
-
     await this.processResources();
-
     this.injectReactLibrary();
-
     super.generate();
-
     this.transformConfigToObject();
-
     this.injectPages();
-
     this.deriveJSON();
   }
 

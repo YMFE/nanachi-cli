@@ -67,6 +67,7 @@ class JavaScript extends SourceCodeResource {
   private injectRegeneratorRuntime() {
     if (!this.regeneratorRequired) return;
     if (this.regeneratorRuntimeInjected) return;
+
     this.ast.program.body.unshift(
       t.importDeclaration(
         [t.importDefaultSpecifier(t.identifier('regeneratorRuntime'))],
