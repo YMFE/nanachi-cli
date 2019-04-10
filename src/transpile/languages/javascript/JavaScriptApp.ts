@@ -1,13 +1,15 @@
 import t from '@babel/types';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import reportError from '@shared/reportError';
-import { relative } from 'path';
+import chalk from 'chalk';
+import fs from 'fs-extra';
 import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptApp extends JavaScriptClass {
   private imports: t.StringLiteral[] = [];
 
   public async process() {
+    await this.checkAppValid();
     this.reset();
     await this.beforeTranspile();
     this.register();
@@ -31,6 +33,15 @@ class JavaScriptApp extends JavaScriptClass {
 
   public get appJSONString() {
     return JSON.stringify(this.configObject, null, 4);
+  }
+
+  private async checkAppValid() {
+    if (await fs.pathExists(this.rawPath)) return;
+
+    this.state = ErrorReportableResourceState.Error;
+    this.error = new Error(chalk`Invalid entry file path ({underline.bold.red ${this.rawPath}})`);
+    reportError(this);
+    this.transpiler.command.exit(-1);
   }
 
   private reset() {

@@ -1,3 +1,4 @@
+import SubCommand from '@commands/SubCommand';
 import JavaScriptApp from '@languages/javascript/JavaScriptApp';
 import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
 import PlainJavaScript from '@languages/javascript/PlainJavaScript';
@@ -24,20 +25,23 @@ export const enum Platforms {
 export interface ITranspiler {
   projectRoot: string;
   platform: Platforms;
+  command: SubCommand;
 }
 
 class Transpiler {
   public projectRoot: string;
   public cwd: string = process.cwd();
   public platform: Platforms;
+  public command: SubCommand;
   public resources: Map<string, WritableResource> = new Map();
   public transpilerRoot: string = path.resolve(__dirname, '..');
 
   private resolveServices: ResolveServices;
 
-  constructor({ projectRoot, platform }: ITranspiler) {
+  constructor({ projectRoot, platform, command }: ITranspiler) {
     this.projectRoot = projectRoot;
     this.platform = platform;
+    this.command = command;
     this.resolveServices = new ResolveServices(
       {
         '@react': path.resolve(this.projectSourceDirectory, 'ReactWX.js'),

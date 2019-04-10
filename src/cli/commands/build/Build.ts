@@ -41,7 +41,8 @@ class Build extends SubCommand {
 
     const transpiler = new Transpiler({
       projectRoot: process.cwd(),
-      platform
+      platform,
+      command: this
     });
 
     transpiler.process();
