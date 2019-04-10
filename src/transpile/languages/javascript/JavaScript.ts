@@ -8,12 +8,15 @@ import SourceCodeResource from '@resources/SourceCodeResource';
 class JavaScript extends SourceCodeResource {
   private parserOptions: ParserOptions;
   private traverseOptions: TraverseOptions = {};
+  private regeneratorRuntimeInjected: boolean = false;
+  private regeneratorRequired: boolean = false;
 
   public async beforeTranspile() {
     await super.load();
     this.initOptions();
     this.parse();
     this.replaceEnvironment();
+    this.injectRegeneratorRuntime();
   }
 
   public registerTraverseOption(options: TraverseOptions) {
@@ -53,12 +56,23 @@ class JavaScript extends SourceCodeResource {
     this.ast = parse(this.sourceCode, this.parserOptions);
 
     const res = transformFromAstSync(this.ast, undefined, {
-      plugins: [require('@babel/plugin-transform-regenerator')],
+      plugins: [require('@babel/plugin-transform-async-to-generator')],
       ast: true,
       code: false
     });
 
     this.ast = res!.ast!;
+  }
+
+  private injectRegeneratorRuntime() {
+    if (!this.regeneratorRequired) return;
+    if (this.regeneratorRuntimeInjected) return;
+    this.ast.program.body.unshift(
+      t.importDeclaration(
+        [t.importDefaultSpecifier(t.identifier('regeneratorRuntime'))],
+        t.stringLiteral('regenerator-runtime/runtime.js')
+      )
+    );
   }
 
   private registerReplaceEnvironment() {
@@ -76,6 +90,32 @@ class JavaScript extends SourceCodeResource {
               }
             }
           }
+        }
+
+        if (t.isIdentifier(property, { name: 'BUILD_ENV' })) {
+          if (t.isMemberExpression(object)) {
+            const { object: subObject, property: subProperty } = object;
+
+            if (t.isIdentifier(subProperty, { name: 'env' })) {
+              if (t.isIdentifier(subObject, { name: 'process' })) {
+                path.replaceWith(t.stringLiteral('beta'));
+              }
+            }
+          }
+        }
+      },
+      ImportDeclaration: path => {
+        const id = path.node.source.value;
+
+        if (id === 'regenerator-runtime/runtime.js') {
+          this.regeneratorRuntimeInjected = true;
+        }
+      },
+      FunctionDeclaration: path => {
+        const id = path.node.id;
+
+        if (id && id.name === '_asyncToGenerator') {
+          this.regeneratorRequired = true;
         }
       }
     });

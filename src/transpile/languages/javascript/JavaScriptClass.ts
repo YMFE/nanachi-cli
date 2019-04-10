@@ -16,6 +16,7 @@ class JavaScriptClass extends JavaScript {
   public configObject: any = {};
 
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
+  private constructorParams: any[] = [];
   private classMethods: t.ClassMethod[] = [];
   private superClass: t.Node | null;
 
@@ -59,7 +60,9 @@ class JavaScriptClass extends JavaScript {
 
   public injectReactLibrary() {
     const { location } = this.transpiler.resolveSync('@react', this.dir);
-    const relativeReactLibraryPath = relative(this.dir, location);
+    const reactResource = this.transpiler.resources.get(location);
+    const destLocation = reactResource!.destPath;
+    const relativeReactLibraryPath = relative(this.destDir, destLocation);
     const normalizedReactLibraryPath = relativeReactLibraryPath.startsWith('.')
       ? relativeReactLibraryPath
       : `./${relativeReactLibraryPath}`;
@@ -68,6 +71,25 @@ class JavaScriptClass extends JavaScript {
       t.stringLiteral(normalizedReactLibraryPath)
     );
     this.ast.program.body.unshift(importNode);
+  }
+
+  public buildPageConstructor() {
+    return t.functionDeclaration(
+      this.classIdentifier,
+      this.constructorParams,
+      t.blockStatement([...this.constructorBody])
+    );
+  }
+
+  public buildAppConstructor() {
+    return t.functionDeclaration(
+      this.classIdentifier,
+      this.constructorParams,
+      t.blockStatement([
+        ...this.buildAppMultipleConstructorAssignmentExpressionStatement(),
+        ...this.constructorBody
+      ])
+    );
   }
 
   private registerTransformClassToFunction() {
@@ -94,9 +116,16 @@ class JavaScriptClass extends JavaScript {
           return;
         },
         exit: path => {
+          const constructor = this.isApp
+            ? []
+            : this.buildPageMultipleConstructorAssignmentExpressionStatement();
+
           path.replaceWithMultiple([
-            this.buildConstructor(),
-            this.buildRegisterClass()
+            this.isApp
+              ? this.buildAppConstructor()
+              : this.buildPageConstructor(),
+            this.buildRegisterClass(),
+            ...constructor
           ]);
         }
       },
@@ -119,6 +148,12 @@ class JavaScriptClass extends JavaScript {
       },
       ClassMethod: {
         enter: path => {
+          const { key, params } = path.node;
+
+          if (t.isIdentifier(key, { name: 'constructor' })) {
+            this.constructorParams = params;
+          }
+
           this.classMethods.push(path.node);
           this.transformArrayMap(path);
         },
@@ -140,6 +175,10 @@ class JavaScriptClass extends JavaScript {
     return this.classProperties
       .filter(([key]) => t.isIdentifier(key, { name: 'config' }))
       .shift();
+  }
+
+  private get isApp() {
+    return this.rawPath.endsWith('app.js');
   }
 
   private get NonConfigClassProperties() {
@@ -188,6 +227,16 @@ class JavaScriptClass extends JavaScript {
   private addExternalResource(path: NodePath<t.ImportDeclaration>) {
     const { value: id } = path.get('source').node;
     const { location } = this.transpiler.resolveSync(id, this.dir)!;
+
+    if (id === 'regenerator-runtime/runtime.js') {
+      const regeneratorLocation = this.transpiler.resources.get(location)!
+        .destPath;
+      path.get('source').node.value = relative(
+        this.destDir,
+        regeneratorLocation
+      );
+      return;
+    }
     path.get('source').node.value = relative(this.dir, location);
 
     if (this.transpiler.resources.has(location)) return;
@@ -239,7 +288,9 @@ class JavaScriptClass extends JavaScript {
       const args = path.node.arguments;
 
       if (args.length < 2) {
-        args.push(t.thisExpression());
+        if (!t.isThisExpression(args[0])) {
+          args.push(t.thisExpression());
+        }
       }
 
       const mapCallback = args[0];
@@ -367,7 +418,20 @@ class JavaScriptClass extends JavaScript {
     return t.objectExpression(this.buildStaticObjectProperties());
   }
 
-  private buildSingleConstructorAssignmentExpressionStatement(
+  private buildPageSingleConstructorAssignmentExpressionStatement(
+    key: t.Node,
+    right: t.Expression | null
+  ) {
+    return t.expressionStatement(
+      t.assignmentExpression(
+        '=',
+        t.memberExpression(this.classIdentifier, key),
+        right === null ? t.nullLiteral() : right
+      )
+    );
+  }
+
+  private buildAppSingleConstructorAssignmentExpressionStatement(
     key: t.Node,
     right: t.Expression | null
   ) {
@@ -380,24 +444,22 @@ class JavaScriptClass extends JavaScript {
     );
   }
 
-  private buildMultipleConstructorAssignmentExpressionStatement() {
+  private buildPageMultipleConstructorAssignmentExpressionStatement() {
     return this.NonConfigClassProperties.reduce((statements, [key, right]) => {
       return [
         ...statements,
-        this.buildSingleConstructorAssignmentExpressionStatement(key, right)
+        this.buildPageSingleConstructorAssignmentExpressionStatement(key, right)
       ];
     }, []);
   }
 
-  private buildConstructor() {
-    return t.functionDeclaration(
-      this.classIdentifier,
-      [],
-      t.blockStatement([
-        ...this.buildMultipleConstructorAssignmentExpressionStatement(),
-        ...this.constructorBody
-      ])
-    );
+  private buildAppMultipleConstructorAssignmentExpressionStatement() {
+    return this.NonConfigClassProperties.reduce((statements, [key, right]) => {
+      return [
+        ...statements,
+        this.buildAppSingleConstructorAssignmentExpressionStatement(key, right)
+      ];
+    }, []);
   }
 }
 

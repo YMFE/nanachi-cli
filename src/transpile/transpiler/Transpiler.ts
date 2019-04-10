@@ -1,4 +1,6 @@
 import JavaScriptApp from '@languages/javascript/JavaScriptApp';
+import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
+import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import FileResource from '@resources/FileResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
@@ -6,7 +8,6 @@ import WritableResource from '@resources/WritableResource';
 import ResolveServices from '@services/ResolveServices';
 import reportError from '@shared/reportError';
 import path from 'path';
-import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 
 const appEntryFileName = 'app.js';
 const sourceCodeDirName = 'source';
@@ -30,21 +31,27 @@ class Transpiler {
   public cwd: string = process.cwd();
   public platform: Platforms;
   public resources: Map<string, WritableResource> = new Map();
+  public transpilerRoot: string = path.resolve(__dirname, '..');
 
   private resolveServices: ResolveServices;
 
   constructor({ projectRoot, platform }: ITranspiler) {
     this.projectRoot = projectRoot;
     this.platform = platform;
-    this.resolveServices = new ResolveServices({
-      '@react': path.resolve(this.projectSourceDirectory, 'ReactWX.js'),
-      '@components': path.resolve(this.projectSourceDirectory, 'components'),
-      '@assets': path.resolve(this.projectSourceDirectory, 'assets'),
-      '@common': path.resolve(this.projectSourceDirectory, 'common')
-    });
+    this.resolveServices = new ResolveServices(
+      {
+        '@react': path.resolve(this.projectSourceDirectory, 'ReactWX.js'),
+        '@components': path.resolve(this.projectSourceDirectory, 'components'),
+        '@assets': path.resolve(this.projectSourceDirectory, 'assets'),
+        '@common': path.resolve(this.projectSourceDirectory, 'common')
+      },
+      this
+    );
   }
 
   public async process() {
+    await this.prepareRegeneratorRuntime();
+
     const app = new JavaScriptApp({
       rawPath: this.appEntryPath,
       transpiler: this
@@ -70,17 +77,14 @@ class Transpiler {
       case id === '@react':
         const reactLocation = (await this.resolve(
           './ReactWX.js',
-          '/Users/roland_reed/Workspace/aaaa/source'
+          this.projectSourceDirectory
         )).location;
-        const reactResource = new WritableResource({
+        const reactResource = new JavaScriptLibrary({
           rawPath: reactLocation,
           transpiler: this
         });
+        await reactResource.process();
 
-        reactResource.setCustomDestPath(
-          path.resolve(this.projectDestDirectory, 'ReactWX.js')
-        );
-        await reactResource.read();
         this.addResource(reactLocation, reactResource);
         break;
 
@@ -104,12 +108,6 @@ class Transpiler {
           : new PlainJavaScript(resourceConfig);
 
         await scriptResource.process();
-
-        // if (isPageOrClass) {
-        //   await (scriptResource as WeixinLikePage).process();
-        // } else {
-        //   await (scriptResource as WritableResource).read();
-        // }
 
         this.addResource(location, scriptResource);
         break;
@@ -137,6 +135,22 @@ class Transpiler {
 
   private get appEntryPath() {
     return path.resolve(this.projectRoot, sourceCodeDirName, appEntryFileName);
+  }
+
+  private async prepareRegeneratorRuntime() {
+    const { location } = await this.resolve(
+      'regenerator-runtime/runtime.js',
+      this.transpilerRoot
+    );
+    const resource = new JavaScriptLibrary({
+      rawPath: location,
+      transpiler: this
+    });
+    await resource.process();
+    resource.setCustomDestPath(
+      path.resolve(this.projectDestDirectory, 'runtime.js')
+    );
+    this.addResource(location, resource);
   }
 
   private async emit() {

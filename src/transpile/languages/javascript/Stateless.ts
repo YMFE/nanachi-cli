@@ -2,12 +2,15 @@ import { transformFromAstSync } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import Template from '@platforms/WeixinLike/Template';
+import WritableResource from '@resources/WritableResource';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
+import { relative } from 'path';
 import JavaScript from './JavaScript';
 
 class Stateless extends JavaScript {
   private renderMethod: t.FunctionDeclaration;
+  private configObject: any = { component: true };
 
   public async beforeTranspile() {
     await super.beforeTranspile();
@@ -15,14 +18,82 @@ class Stateless extends JavaScript {
 
   public register() {
     this.registerTransformStateless();
+    this.registerRemoveImport();
+    this.registerComponent();
   }
 
   public async process() {
     await this.beforeTranspile();
     this.register();
     this.traverse();
+    this.injectReactLibrary();
     this.generate();
     this.deriveTemplate();
+    this.deriveJSON();
+  }
+
+  public injectReactLibrary() {
+    const { location } = this.transpiler.resolveSync('@react', this.dir);
+    const reactResource = this.transpiler.resources.get(location);
+    const destLocation = reactResource!.destPath;
+    const relativeReactLibraryPath = relative(this.destDir, destLocation);
+    const normalizedReactLibraryPath = relativeReactLibraryPath.startsWith('.')
+      ? relativeReactLibraryPath
+      : `./${relativeReactLibraryPath}`;
+    const importNode = t.importDeclaration(
+      [t.importDefaultSpecifier(t.identifier('React'))],
+      t.stringLiteral(normalizedReactLibraryPath)
+    );
+    this.ast.program.body.unshift(importNode);
+  }
+
+  private deriveJSON() {
+    const jsonResource = new WritableResource({
+      rawPath: this.pathWithoutExt + '.json',
+      transpiler: this.transpiler
+    });
+
+    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
+
+    this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
+  }
+
+  private registerRemoveImport() {
+    this.registerTraverseOption({
+      ImportDeclaration: path => {
+        path.remove();
+      }
+    });
+  }
+
+  private registerComponent() {
+    this.registerTraverseOption({
+      ExportDefaultDeclaration: path => {
+        const { declaration } = path.node;
+        let { id } = declaration as t.FunctionDeclaration;
+
+        if (id == null) {
+          id = t.identifier('Stateless');
+        }
+
+        const name = id.name;
+        path.insertBefore(declaration);
+        path.insertBefore(
+          t.expressionStatement(
+            t.callExpression(t.identifier('Component'), [
+              t.callExpression(
+                t.memberExpression(
+                  t.identifier('React'),
+                  t.identifier('registerComponent')
+                ),
+                [id, t.stringLiteral(name)]
+              )
+            ])
+          )
+        );
+        path.node.declaration = id;
+      }
+    });
   }
 
   private registerTransformStateless() {
@@ -44,6 +115,11 @@ class Stateless extends JavaScript {
           this.transformArrayMap(path);
           this.transformReact(path);
         }
+      },
+      JSXElement: {
+        enter: path => {
+          this.transformIfNodeIsComponent(path);
+        }
       }
     });
   }
@@ -64,12 +140,69 @@ class Stateless extends JavaScript {
       renderMethod: this.renderMethod,
       creator: this,
       rawPath: this.pathWithoutExt + '.wxml',
-      transpiler: this.transpiler
+      transpiler: this.transpiler,
+      configObject: this.configObject
     });
 
     template.process();
 
     this.transpiler.addResource(template.rawPath, template);
+  }
+
+  private transformIfNodeIsComponent(path: NodePath<t.JSXElement>) {
+    const {
+      node: {
+        openingElement,
+        openingElement: { attributes },
+        closingElement
+      }
+    } = path;
+
+    if (t.isJSXOpeningElement(openingElement)) {
+      if (t.isJSXIdentifier(openingElement.name)) {
+        const rawName = openingElement.name.name;
+
+        if (/^[A-Z]/.test(rawName)) {
+          const useComponentNode = t.jsxMemberExpression(
+            t.jsxIdentifier('React'),
+            t.jsxIdentifier('useComponent')
+          );
+
+          openingElement.name = useComponentNode;
+
+          if (closingElement) {
+            closingElement.name = useComponentNode;
+          }
+
+          const callback = path.findParent(t.isCallExpression);
+          let instanceUidValue: t.Node;
+
+          if (callback) {
+            const { params } = (callback as any).node.arguments[0];
+            const [, indexNode] = params;
+
+            instanceUidValue = t.binaryExpression(
+              '+',
+              t.stringLiteral(uid.next()),
+              t.identifier(indexNode.name)
+            );
+          } else {
+            instanceUidValue = t.stringLiteral(uid.next());
+          }
+
+          attributes.push(
+            t.jsxAttribute(
+              t.jsxIdentifier('data-instance-uid'),
+              t.jsxExpressionContainer(instanceUidValue)
+            )
+          );
+
+          attributes.push(
+            t.jsxAttribute(t.jsxIdentifier('is'), t.stringLiteral(rawName))
+          );
+        }
+      }
+    }
   }
 
   private transformArrayMapCallExpression(path: NodePath<t.CallExpression>) {

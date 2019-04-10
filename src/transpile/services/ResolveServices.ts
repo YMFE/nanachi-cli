@@ -1,4 +1,5 @@
 import { warn } from '@shared/spinner';
+import Transpiler from '@transpiler/Transpiler';
 import chalk from 'chalk';
 import resolve from 'resolve';
 
@@ -18,11 +19,14 @@ interface InterfaceAlias {
 class ResolveServices {
   private caches: InterfaceResolveCache[] = [];
   private aliasKeys: string[] = [];
+  private transpiler: Transpiler;
 
-  constructor(alias: InterfaceAlias = {}) {
+  constructor(alias: InterfaceAlias = {}, transpiler: Transpiler) {
     this.resolve = this.resolve.bind(this);
     this.resolveSync = this.resolveSync.bind(this);
+    this.transpiler = transpiler;
     this.initAlias(alias);
+    this.prepareRegeneratorRuntime();
   }
 
   public async resolve(id: string, base: string) {
@@ -59,6 +63,17 @@ class ResolveServices {
     const resolvedId = this.resolveAlias(id, base);
 
     return this.innerResolveSync(resolvedId, base);
+  }
+
+  private prepareRegeneratorRuntime() {
+    const id = 'regenerator-runtime/runtime.js';
+    this.resolveSync(
+      'regenerator-runtime/runtime.js',
+      this.transpiler.transpilerRoot
+    );
+
+    this.aliasKeys.push(id);
+    this.caches.find(cache => cache.id === id)!.type = 'alias';
   }
 
   private resolveAlias(id: string, base: string) {

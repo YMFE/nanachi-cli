@@ -12,7 +12,8 @@
     "@babel/parser": "^7.3.4",
     "@babel/plugin-proposal-class-properties": "^7.3.4",
     "@babel/plugin-syntax-jsx": "^7.2.0",
-    "@babel/plugin-transform-regenerator": "^7.4.0",
+    "@babel/plugin-transform-async-to-generator": "^7.4.0",
+    "@babel/plugin-transform-regenerator": "^7.4.3",
     "@babel/preset-react": "^7.0.0",
     "@babel/template": "^7.2.2",
     "@babel/traverse": "^7.3.4",
@@ -23,7 +24,7 @@
     "fs-extra": "^7.0.1",
     "inquirer": "^6.2.2",
     "ora": "^3.2.0",
-    "regenerator-runtime": "^0.13.2",
+    "regenerator-runtime": "0.12.1",
     "resolve": "^1.10.0",
     "validate-npm-package-name": "^3.0.0",
     "yargs": "^13.2.2"

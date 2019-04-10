@@ -18,7 +18,6 @@ class WeixinLikePage extends JavaScriptClass {
     try {
       super.traverse();
       this.removeAllImports();
-      // super.injectReactLibrary();
       this.deriveTemplate();
       this.transformConfigToObject();
       this.replaceNavigationBarTextStyle();

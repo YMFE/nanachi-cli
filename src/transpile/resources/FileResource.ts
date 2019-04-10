@@ -41,6 +41,10 @@ class FileResource extends Resource {
     return path.resolve(this.transpiler.projectDestDirectory, relativePath);
   }
 
+  public get destDir() {
+    return path.parse(this.destPath).dir;
+  }
+
   public get ext() {
     return this.parsedPath.ext;
   }
