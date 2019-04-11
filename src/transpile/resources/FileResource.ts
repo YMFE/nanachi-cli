@@ -10,6 +10,7 @@ class FileResource extends Resource {
 
   private parsedPath: path.ParsedPath;
   private customDestPath: string;
+  private customDestExt: string;
 
   constructor({ rawPath, ...resource }: IFileResource) {
     super(resource);
@@ -37,12 +38,28 @@ class FileResource extends Resource {
   public get destPath() {
     if (this.customDestPath) return this.customDestPath;
 
-    const relativePath = this.relativeFromSource(this.transpiler.projectSourceDirectory);
-    return path.resolve(this.transpiler.projectDestDirectory, relativePath);
+    const relativePath = this.relativeFromSource(
+      this.transpiler.projectSourceDirectory
+    );
+    const intermediatePath = path.resolve(
+      this.transpiler.projectDestDirectory,
+      relativePath
+    );
+    const { dir, name } = path.parse(intermediatePath);
+
+    return path.join(dir, `${name}${this.destExt}`);
   }
 
   public get destDir() {
     return path.parse(this.destPath).dir;
+  }
+
+  public get destExt() {
+    return this.customDestExt || this.ext;
+  }
+
+  public set destExt(ext: string) {
+    this.customDestExt = ext;
   }
 
   public get ext() {

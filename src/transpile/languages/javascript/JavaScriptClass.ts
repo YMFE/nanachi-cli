@@ -228,16 +228,29 @@ class JavaScriptClass extends JavaScript {
     const { value: id } = path.get('source').node;
     const { location } = this.transpiler.resolveSync(id, this.dir)!;
 
-    if (id === 'regenerator-runtime/runtime.js') {
-      const regeneratorLocation = this.transpiler.resources.get(location)!
-        .destPath;
-      path.get('source').node.value = relative(
-        this.destDir,
-        regeneratorLocation
-      );
-      return;
+    switch (id) {
+      case 'regenerator-runtime/runtime.js':
+        const regeneratorLocation = this.transpiler.resources.get(location)!
+          .destPath;
+        path.get('source').node.value = relative(
+          this.destDir,
+          regeneratorLocation
+        );
+        break;
+
+      case '@react':
+        const reactLibraryLocation = this.transpiler.resources.get(location)!
+          .destPath;
+        path.get('source').node.value = relative(
+          this.destDir,
+          reactLibraryLocation
+        );
+        break;
+
+      default:
+        path.get('source').node.value = relative(this.dir, location);
+        break;
     }
-    path.get('source').node.value = relative(this.dir, location);
 
     if (this.transpiler.resources.has(location)) return;
 

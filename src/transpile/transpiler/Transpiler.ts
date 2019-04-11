@@ -2,6 +2,7 @@ import SubCommand from '@commands/SubCommand';
 import JavaScriptApp from '@languages/javascript/JavaScriptApp';
 import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
 import PlainJavaScript from '@languages/javascript/PlainJavaScript';
+import Style from '@languages/style/Style';
 import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import FileResource from '@resources/FileResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
@@ -70,6 +71,7 @@ class Transpiler {
 
   public addResource(rawPath: string, resource: WritableResource) {
     if (this.resources.has(rawPath)) return;
+
     resource.emit = true;
     resource.emitted = false;
     this.resources.set(rawPath, resource);
@@ -87,17 +89,24 @@ class Transpiler {
           rawPath: reactLocation,
           transpiler: this
         });
-        await reactResource.process();
 
-        this.addResource(reactLocation, reactResource);
+        reactResource.setCustomDestPath(
+          path.resolve(this.projectDestDirectory, 'lib/React.js')
+        );
+        this.resources.set(location, reactResource);
+        await reactResource.process();
+        reactResource.emit = true;
+        reactResource.emitted = false;
+        this.emit();
         break;
 
       case /\.(s?css|less)$/.test(location):
-        const styleResource = new WritableResource({
+        const styleResource = new Style({
           rawPath: location,
           transpiler: this
         });
 
+        await styleResource.process();
         this.addResource(location, styleResource);
         break;
 
@@ -112,7 +121,6 @@ class Transpiler {
           : new PlainJavaScript(resourceConfig);
 
         await scriptResource.process();
-
         this.addResource(location, scriptResource);
         break;
 
@@ -152,7 +160,7 @@ class Transpiler {
     });
     await resource.process();
     resource.setCustomDestPath(
-      path.resolve(this.projectDestDirectory, 'runtime.js')
+      path.resolve(this.projectDestDirectory, 'lib/runtime.js')
     );
     this.addResource(location, resource);
   }

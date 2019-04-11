@@ -52,9 +52,15 @@ class Template extends DerivedJavaScriptTraversable {
           this.replaceAttributeValueLiteral(path);
         }
       },
-      JSXElement: path => {
-        this.transformIfNodeIsReactUseComponent(path);
-        this.replaceJSXElementChildren(path);
+      JSXElement: {
+        enter: path => {
+          this.transformIfNodeIsReactUseComponent(path);
+          // this.replaceJSXElementChildren(path);
+        },
+        exit: path => {
+          // this.transformIfNodeIsReactUseComponent(path);
+          this.replaceJSXElementChildren(path);
+        }
       },
       JSXText: path => {
         this.removeInlineElementText(path);
@@ -343,6 +349,16 @@ class Template extends DerivedJavaScriptTraversable {
             );
             break;
 
+          case t.isBinaryExpression(expression):
+            element.replaceWith(
+              t.jsxText(
+                `{{${this.transformOrdinaryBinaryExpression(
+                  expression as t.BinaryExpression
+                )}}}`
+              )
+            );
+            break;
+
           default:
             break;
         }
@@ -552,8 +568,10 @@ class Template extends DerivedJavaScriptTraversable {
         false
       )
     ];
+    // console.log(generate(replacement))
+    // console.log(alternate, !t.isNullLiteral(alternate))
 
-    if (alternate === null || !t.isNullLiteral(alternate)) {
+    if (!t.isNullLiteral(alternate)) {
       const alternateJSX = t.isStringLiteral(alternate)
         ? [t.jsxText(alternate.value)]
         : alternateReplacement;
@@ -575,6 +593,8 @@ class Template extends DerivedJavaScriptTraversable {
         )
       );
     }
+    // console.log(generate(conditional))
+    // replacement.forEach(node => console.log(generate(node)))
 
     return replacement;
   }

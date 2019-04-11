@@ -39,7 +39,9 @@ class JavaScriptApp extends JavaScriptClass {
     if (await fs.pathExists(this.rawPath)) return;
 
     this.state = ErrorReportableResourceState.Error;
-    this.error = new Error(chalk`Invalid entry file path ({underline.bold.red ${this.rawPath}})`);
+    this.error = new Error(
+      chalk`Invalid entry file path ({underline.bold.red ${this.rawPath}})`
+    );
     reportError(this);
     this.transpiler.command.exit(-1);
   }
@@ -49,15 +51,23 @@ class JavaScriptApp extends JavaScriptClass {
     this.error = '';
   }
 
+  private async resolveResourceLocation(id: string) {
+    try {
+      return await this.transpiler.resolve(
+        id,
+        this.transpiler.projectSourceDirectory
+      );
+    } catch (error) {
+      return this.transpiler.resolve(id, this.transpiler.projectRoot);
+    }
+  }
+
   private async processResources() {
     const resourceProcessesPromise = this.imports.map(async node => {
       const id = node.value;
 
       try {
-        const { location } = await this.transpiler.resolve(
-          id,
-          this.transpiler.projectSourceDirectory
-        );
+        const { location } = await this.resolveResourceLocation(id);
 
         await this.transpiler.processResource(id, location);
       } catch (error) {
