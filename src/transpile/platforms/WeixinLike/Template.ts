@@ -55,10 +55,21 @@ class Template extends DerivedJavaScriptTraversable {
       JSXElement: {
         enter: path => {
           this.transformIfNodeIsReactUseComponent(path);
-          // this.replaceJSXElementChildren(path);
+          path.traverse({
+            IfStatement: ifPath => {
+              const { node } = ifPath;
+              const { alternate } = node;
+              if (alternate === null) {
+                const following = ifPath.getSibling(1);
+                if (t.isReturnStatement(following.node)) {
+                  node.alternate = t.blockStatement([following.node]);
+                  following.remove();
+                }
+              }
+            }
+          });
         },
         exit: path => {
-          // this.transformIfNodeIsReactUseComponent(path);
           this.replaceJSXElementChildren(path);
         }
       },
@@ -98,6 +109,7 @@ class Template extends DerivedJavaScriptTraversable {
 
         if (inlineElements[name]) {
           const { value } = path.node;
+
           if (value) {
             path.node.value = value.trim();
           } else {
@@ -329,10 +341,31 @@ class Template extends DerivedJavaScriptTraversable {
             break;
 
           case t.isIdentifier(expression):
-          case t.isMemberExpression(expression):
             element.replaceWith(
               t.jsxText(`{{${this.replaceThis(generate(expression))}}}`)
             );
+            break;
+
+          case t.isMemberExpression(expression):
+            const { object, property } = expression as t.MemberExpression;
+            if (
+              t.isIdentifier(object, { name: 'props' }) &&
+              t.isIdentifier(property, { name: 'children' })
+            ) {
+              element.replaceWith(
+                t.jsxElement(
+                  t.jsxOpeningElement(t.jsxIdentifier('slot'), []),
+                  t.jsxClosingElement(t.jsxIdentifier('slot')),
+                  [],
+                  true
+                )
+              );
+            } else {
+              element.replaceWith(
+                t.jsxText(`{{${this.replaceThis(generate(expression))}}}`)
+              );
+            }
+
             break;
 
           case t.isCallExpression(expression):
@@ -420,9 +453,9 @@ class Template extends DerivedJavaScriptTraversable {
         t.jsxElement(
           t.jsxOpeningElement(t.jsxIdentifier('block'), attributes),
           t.jsxClosingElement(t.jsxIdentifier('block')),
-          this.normalizeJSXElementChildren([
-            returnStatement as t.Node
-          ]) as t.JSXElement[],
+          this.normalizeJSXElementChildren(
+            returnStatement as t.Node[]
+          ) as t.JSXElement[],
           false
         )
       );
@@ -432,49 +465,29 @@ class Template extends DerivedJavaScriptTraversable {
   private normalizeMapCallFunctionBody(body: t.BlockStatement) {
     switch (body.body.length) {
       case 0:
-        return t.nullLiteral();
+        return [t.nullLiteral()];
 
       case 1:
         const node = body.body[0] as any;
 
-        if (t.isReturnStatement(node)) return node.argument;
+        if (t.isReturnStatement(node)) return [node.argument];
         if (t.isIfStatement(node)) {
-          return this.transformIfStatementToConditionalExpression(node);
+          return [this.transformIfStatementToConditionalExpression(node)];
         }
         if (t.isLogicalExpression(node)) {
-          return this.transformLogicalExpressionToConditionalExpression(node);
+          return [this.transformLogicalExpressionToConditionalExpression(node)];
         }
 
-      case 2:
-        const [mayBeIfStatement, mayBeReturnStatement] = body.body as any;
-
-        if (
-          t.isIfStatement(mayBeIfStatement) &&
-          t.isReturnStatement(mayBeReturnStatement) &&
-          mayBeIfStatement.alternate === null
-        ) {
-          mayBeIfStatement.alternate = t.blockStatement([mayBeReturnStatement]);
-          return this.transformIfStatementToConditionalExpression(
-            mayBeIfStatement
-          );
-        } else {
-          this.state = ErrorReportableResourceState.Error;
-          this.error = new Error(
-            'In `render` method, if there are 2 nodes, the first must be a IfStatement without `else`' +
-              'and the second must be a ReturnStatement.'
-          );
-          reportError(this);
-          break;
-        }
-
-      default:
         this.state = ErrorReportableResourceState.Error;
         this.error = new Error(
-          'There should only be only one ReturnStatement or IfStatement, ' +
-            'or one IfStatement following with a ReturnStatement in the body of`render`'
+          'In `render` method, only single ReturnStatement, IfStatement and LogicalExpression' +
+            `are allowed, got ${node.type}`
         );
         reportError(this);
         break;
+
+      default:
+        return body.body;
     }
   }
 
@@ -568,8 +581,6 @@ class Template extends DerivedJavaScriptTraversable {
         false
       )
     ];
-    // console.log(generate(replacement))
-    // console.log(alternate, !t.isNullLiteral(alternate))
 
     if (!t.isNullLiteral(alternate)) {
       const alternateJSX = t.isStringLiteral(alternate)
@@ -593,8 +604,6 @@ class Template extends DerivedJavaScriptTraversable {
         )
       );
     }
-    // console.log(generate(conditional))
-    // replacement.forEach(node => console.log(generate(node)))
 
     return replacement;
   }

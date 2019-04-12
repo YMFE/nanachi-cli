@@ -1,8 +1,12 @@
 import { transformFromAstSync } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
+import builtInElements from '@platforms/WeixinLike/builtInElements';
 import Template from '@platforms/WeixinLike/Template';
+import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
+import generate from '@shared/generate';
+import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
 import { relative } from 'path';
@@ -17,6 +21,7 @@ class Stateless extends JavaScript {
   }
 
   public register() {
+    this.registerAttrName();
     this.registerTransformStateless();
     this.registerRemoveImport();
     this.registerComponent();
@@ -114,11 +119,6 @@ class Stateless extends JavaScript {
         exit: path => {
           this.transformArrayMap(path);
           this.transformReact(path);
-        }
-      },
-      JSXElement: {
-        enter: path => {
-          this.transformIfNodeIsComponent(path);
         }
       }
     });
@@ -231,6 +231,234 @@ class Stateless extends JavaScript {
         }
       }
     }
+  }
+
+  private replacingClosingElementWithName(
+    closingElement: NodePath<t.JSXClosingElement | null>,
+    name: string
+  ) {
+    if (t.isJSXClosingElement(closingElement)) {
+      const closingNode = closingElement.node;
+
+      if (t.isJSXClosingElement(closingNode)) {
+        const closingName = closingNode.name;
+
+        if (t.isJSXIdentifier(closingName)) {
+          closingName.name = name;
+        }
+      }
+    }
+  }
+
+  private registerAttrName() {
+    this.registerTraverseOption({
+      JSXAttribute: path => {
+        this.replaceAttributeName(path);
+        this.replaceAssetsPath(path);
+        this.replaceStyle(path);
+      },
+      JSXElement: {
+        enter: path => {
+          const openingElement = path.get('openingElement');
+          const closingElement = path.get('closingElement');
+          const openingNode = openingElement.get('name').node;
+
+          if (t.isJSXIdentifier(openingNode)) {
+            const openingNodeName = openingNode.name;
+
+            switch (openingNodeName) {
+              case 'p':
+              case 'div':
+              case 'li':
+              case 'h1':
+              case 'h2':
+              case 'h3':
+              case 'h4':
+              case 'h5':
+              case 'h6':
+              case 'quoteblock':
+                openingNode.name = 'view';
+                this.replacingClosingElementWithName(closingElement, 'view');
+
+                break;
+
+              case 'span':
+              case 'b':
+              case 's':
+              case 'code':
+              case 'quote':
+              case 'cite':
+                openingNode.name = 'text';
+                this.replacingClosingElementWithName(closingElement, 'text');
+
+                break;
+              default:
+                if (builtInElements[openingNodeName] === undefined) {
+                  openingNode.name = 'view';
+                  this.replacingClosingElementWithName(closingElement, 'view');
+                }
+            }
+          }
+          this.transformIfNodeIsComponent(path);
+        },
+        exit: path => {
+          this.transformIfNodeIsComponent(path);
+        }
+      }
+    });
+  }
+
+  private replaceAttributeName(path: NodePath<t.JSXAttribute>) {
+    const { node } = path.get('name');
+
+    if (t.isJSXIdentifier(node)) {
+      switch (true) {
+        case node.name === 'className':
+          node.name = 'class';
+          break;
+
+        case /^catch[A-Z]/.test(node.name):
+          this.addEventUidAndBeacon(path, node.name.slice(5));
+          break;
+
+        case /^on[A-Z]/.test(node.name):
+          this.addEventUidAndBeacon(path, node.name.slice(2));
+
+        default:
+          break;
+      }
+    }
+  }
+
+  private replaceAssetsPath(path: NodePath<t.JSXAttribute>) {
+    const { node: attributeName } = path.get('name');
+    const { node: attributeValue } = path.get('value');
+
+    if (t.isJSXIdentifier(attributeName)) {
+      if (attributeName.name === 'src') {
+        if (t.isStringLiteral(attributeValue)) {
+          if (/^https?:\/\//.test(attributeValue.value)) {
+            // console.log('remote: ', attributeValue.value);
+          } else {
+            // console.log('local: ', attributeValue.value);
+            const id = attributeValue.value;
+            const { location } = this.transpiler.resolveSync(id, this.dir);
+            attributeValue.value = location;
+          }
+        }
+      }
+    }
+  }
+
+  private replaceStyle(path: NodePath<t.JSXAttribute>) {
+    const { node: attributeName } = path.get('name');
+    const { node: attributeValue } = path.get('value');
+
+    if (t.isJSXIdentifier(attributeName)) {
+      if (attributeName.name === 'style') {
+        if (t.isJSXExpressionContainer(attributeValue)) {
+          const { expression } = attributeValue;
+
+          switch (true) {
+            case t.isIdentifier(expression) ||
+              t.isMemberExpression(expression) ||
+              t.isObjectExpression(expression):
+              path
+                .get('value')
+                .replaceWith(
+                  t.jsxExpressionContainer(
+                    t.callExpression(
+                      t.memberExpression(
+                        t.identifier('React'),
+                        t.identifier('toStyle')
+                      ),
+                      [
+                        expression as t.Identifier,
+                        t.memberExpression(
+                          t.thisExpression(),
+                          t.identifier('props')
+                        ),
+                        t.stringLiteral(uid.next())
+                      ]
+                    )
+                  )
+                );
+
+              return;
+
+            default:
+              if (t.isStringLiteral(expression)) return;
+              if (t.isCallExpression(expression)) {
+                if (t.isMemberExpression(expression.callee)) {
+                  if (
+                    t.isIdentifier(expression.callee.object, {
+                      name: 'React'
+                    })
+                  ) {
+                    return;
+                  }
+                }
+              }
+
+              this.state = ErrorReportableResourceState.Error;
+              this.error =
+                `Props "style"'s value's type should be one of ` +
+                `Identifier, MemberExpression or ObjectExpression,` +
+                ` got "${generate(expression)}" at line ${
+                  expression.loc ? expression.loc.start.line : 'unknown'
+                }`;
+              reportError(this);
+              break;
+          }
+        }
+      }
+    }
+  }
+
+  private addEventUidAndBeacon(
+    path: NodePath<t.JSXAttribute>,
+    eventName: string
+  ) {
+    const openingElement = path.findParent(t.isJSXOpeningElement)
+      .node as t.JSXOpeningElement;
+    const { name, attributes } = openingElement;
+    const eventAttribute = attributes.find(attribute => {
+      if (t.isJSXAttribute(attribute)) {
+        const { name: attributeName } = attribute;
+        if (t.isJSXIdentifier(attributeName)) {
+          const eventRegex = new RegExp(`^(on|catch)${eventName}$`);
+
+          if (eventRegex.test(attributeName.name)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+
+    if (eventName === 'Click') eventName = 'Tap';
+
+    if (t.isJSXIdentifier(name)) {
+      const nodeName = name.name;
+      if (nodeName === 'input' || nodeName === 'textarea') {
+        eventName = 'Input';
+      }
+    }
+
+    (eventAttribute! as t.JSXAttribute).name = t.jsxIdentifier(
+      `on${eventName}`
+    );
+
+    openingElement.attributes.push(
+      t.jsxAttribute(
+        t.jsxIdentifier(`data-${eventName.toLocaleLowerCase()}-uid`),
+        t.stringLiteral(uid.next())
+      ),
+      t.jsxAttribute(
+        t.jsxIdentifier('data-beacon-uid'),
+        t.stringLiteral('default')
+      )
+    );
   }
 
   private replaceDataIdInMapCall(

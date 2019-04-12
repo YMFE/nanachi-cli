@@ -1,5 +1,5 @@
 import { transformFromAstSync } from '@babel/core';
-import { NodePath } from '@babel/traverse';
+import traverse, { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import { ErrorReportableResourceState } from '@resources/Resource';
 import WritableResource from '@resources/WritableResource';
@@ -111,7 +111,7 @@ class JavaScriptClass extends JavaScript {
             return;
           }
 
-          this.superClass = t.clone(superClass.node!);
+          this.superClass = superClass.node;
 
           return;
         },
@@ -127,6 +127,28 @@ class JavaScriptClass extends JavaScript {
             this.buildRegisterClass(),
             ...constructor
           ]);
+
+          traverse(this.ast, {
+            ImportDeclaration: importPath => {
+              const { specifiers } = importPath.node;
+
+              if (specifiers.length === 0) return;
+              if (specifiers.length > 1) return;
+
+              const [specifier] = specifiers;
+
+              if (t.isImportDefaultSpecifier(specifier)) {
+                const { local } = specifier;
+
+                if (local.name === 'React') return;
+                if (local.name === 'regeneratorRuntime') return;
+
+                if (!t.isIdentifier(this.superClass)) {
+                  importPath.remove();
+                }
+              }
+            }
+          });
         }
       },
       ClassProperty: path => {
@@ -136,15 +158,6 @@ class JavaScriptClass extends JavaScript {
         this.classProperties.push([key.node, value.node]);
 
         return;
-      },
-      LogicalExpression: path => {
-        path.replaceWith(
-          t.conditionalExpression(
-            path.node.left,
-            path.node.right,
-            t.nullLiteral()
-          )
-        );
       },
       ClassMethod: {
         enter: path => {

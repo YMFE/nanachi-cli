@@ -9,7 +9,9 @@ const inlineElements: {
   em: 1,
   bdo: 1,
   q: 1,
-  view: 1
+  view: 1,
+  div: 1,
+  button: 1
 };
 
 export default inlineElements;

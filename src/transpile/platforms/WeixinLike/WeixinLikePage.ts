@@ -3,10 +3,12 @@ import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
 import Stateless from '@languages/javascript/Stateless';
 import { ErrorReportableResourceState } from '@resources/Resource';
+import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
 import { relative } from 'path';
+import builtInElements from './builtInElements';
 import Template from './Template';
 
 class WeixinLikePage extends JavaScriptClass {
@@ -17,7 +19,7 @@ class WeixinLikePage extends JavaScriptClass {
 
     try {
       super.traverse();
-      this.removeAllImports();
+      this.removeUnnecessaryImports();
       this.deriveTemplate();
       this.transformConfigToObject();
       this.replaceNavigationBarTextStyle();
@@ -37,9 +39,9 @@ class WeixinLikePage extends JavaScriptClass {
     this.registerAttrName();
   }
 
-  private removeAllImports() {
+  private removeUnnecessaryImports() {
     this.resetTraverseOptions();
-    this.registerRemoveImport();
+    this.registerRemoveImports();
     this.traverse();
   }
 
@@ -68,10 +70,21 @@ class WeixinLikePage extends JavaScriptClass {
   private replaceNavigationBarTextStyle() {
     if (this.isComponent) return;
 
-    const key = 'navigationBarTextStyle';
-    const color = this.configObject[key];
+    const NAVIGATION_BAR_TEXT_KEY = 'navigationBarTextStyle';
 
-    this.configObject[key] = color === '#fff' ? 'white' : 'black';
+    if (this.configObject[NAVIGATION_BAR_TEXT_KEY]) {
+      const color = this.configObject[NAVIGATION_BAR_TEXT_KEY];
+
+      if (color === '#fff') {
+        return (this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'white');
+      }
+
+      if (color === '#000') {
+        return (this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'black');
+      }
+
+      this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'white';
+    }
   }
 
   private async replaceWithStatelessWhenComponentIsStateless() {
@@ -86,7 +99,7 @@ class WeixinLikePage extends JavaScriptClass {
     this.transpiler.addResource(this.rawPath, stateless);
   }
 
-  private registerRemoveImport() {
+  private registerRemoveImports() {
     this.registerTraverseOption({
       ImportDeclaration: path => {
         const id = path.node.source.value;
@@ -237,10 +250,15 @@ class WeixinLikePage extends JavaScriptClass {
           if (/^https?:\/\//.test(attributeValue.value)) {
             // console.log('remote: ', attributeValue.value);
           } else {
-            // console.log('local: ', attributeValue.value);
+            // console.log('local: ', this.transpiler.resolveSync(attributeValue.value, this.dir).location);
             const id = attributeValue.value;
             const { location } = this.transpiler.resolveSync(id, this.dir);
-            attributeValue.value = location;
+            const imageResource = new WritableResource({
+              rawPath: location,
+              transpiler: this.transpiler
+            });
+            this.transpiler.addResource(location, imageResource);
+            attributeValue.value = this.relativeFromDest(this.destDir);
           }
         }
       }
@@ -355,6 +373,10 @@ class WeixinLikePage extends JavaScriptClass {
 
                 break;
               default:
+                // if (builtInElements[openingNodeName] === undefined) {
+                //   openingNode.name = 'view';
+                //   this.replacingClosingElementWithName(closingElement, 'view');
+                // }
                 break;
             }
           }
