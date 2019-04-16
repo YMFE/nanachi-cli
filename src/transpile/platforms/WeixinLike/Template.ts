@@ -5,6 +5,8 @@ import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversabl
 import { ErrorReportableResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
+import blockElements from './blockElements';
+import builtInElements from './builtInElements';
 import inlineElements from './inlineElements';
 import platformSpecificFragments from './platformSpecificFragments';
 
@@ -106,8 +108,13 @@ class Template extends DerivedJavaScriptTraversable {
 
       if (t.isJSXIdentifier(openingElement.name)) {
         const { name } = openingElement.name;
+        const spaceRemovableElements = {
+          ...inlineElements,
+          ...blockElements,
+          ...builtInElements
+        };
 
-        if (inlineElements[name]) {
+        if (spaceRemovableElements[name] || /^anu-/.test(name)) {
           const { value } = path.node;
 
           if (value) {

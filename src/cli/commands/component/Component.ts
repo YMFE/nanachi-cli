@@ -1,5 +1,5 @@
 import EntityInitialization from '@commands/page/EntityInitialization';
-import { InterfaceSubCommand } from '@commands/SubCommand';
+import { InterfaceSubCommand } from '@commands/SubCommandAbstract';
 import { stop } from '@shared/spinner';
 import chalk from 'chalk';
 import createComponentTemplate from './createComponentTemplate';

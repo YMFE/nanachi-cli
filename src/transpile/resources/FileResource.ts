@@ -27,6 +27,14 @@ class FileResource extends Resource {
     return path.relative(from, this.destPath);
   }
 
+  public relativeFromSourceDirTo(to: string) {
+    return path.relative(this.dir, to);
+  }
+
+  public relativeFromDestDirTo(to: string) {
+    return path.relative(this.destDir, to);
+  }
+
   public setCustomDestPath(destPath: string) {
     this.customDestPath = destPath;
   }

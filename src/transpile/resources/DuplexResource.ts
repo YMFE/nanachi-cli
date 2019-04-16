@@ -6,7 +6,7 @@ export interface IWritableResource extends IFileResource {
   emit?: boolean;
 }
 
-class WritableResource extends FileResource {
+class DuplexResource extends FileResource {
   public emit: boolean;
   public emitted: boolean = false;
 
@@ -42,4 +42,4 @@ class WritableResource extends FileResource {
   }
 }
 
-export default WritableResource;
+export default DuplexResource;

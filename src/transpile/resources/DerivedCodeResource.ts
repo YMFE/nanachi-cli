@@ -1,13 +1,13 @@
-import SourceCodeResource from './SourceCodeResource';
-import WritableResource, {
+import DuplexResource, {
   IWritableResource
-} from './WritableResource';
+} from './DuplexResource';
+import SourceCodeResource from './SourceCodeResource';
 
 export interface IDerivedResource extends IWritableResource {
   creator: SourceCodeResource;
 }
 
-class DerivedCodeResource extends WritableResource {
+class DerivedCodeResource extends DuplexResource {
   public creator: SourceCodeResource;
 
   constructor({ creator, ...resource }: IDerivedResource) {

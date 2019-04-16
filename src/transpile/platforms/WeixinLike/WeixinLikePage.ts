@@ -2,13 +2,13 @@ import { NodePath } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
 import Stateless from '@languages/javascript/Stateless';
+import DuplexResource from '@resources/DuplexResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
 import { relative } from 'path';
-import builtInElements from './builtInElements';
+import nodeNameMap from './nodeNameMap';
 import Template from './Template';
 
 class WeixinLikePage extends JavaScriptClass {
@@ -250,15 +250,15 @@ class WeixinLikePage extends JavaScriptClass {
           if (/^https?:\/\//.test(attributeValue.value)) {
             // console.log('remote: ', attributeValue.value);
           } else {
-            // console.log('local: ', this.transpiler.resolveSync(attributeValue.value, this.dir).location);
             const id = attributeValue.value;
             const { location } = this.transpiler.resolveSync(id, this.dir);
-            const imageResource = new WritableResource({
+            const imageResource = new DuplexResource({
               rawPath: location,
               transpiler: this.transpiler
             });
+            imageResource.read();
             this.transpiler.addResource(location, imageResource);
-            attributeValue.value = this.relativeFromDest(this.destDir);
+            attributeValue.value = this.relativeFromSourceDirTo(location);
           }
         }
       }
@@ -345,40 +345,13 @@ class WeixinLikePage extends JavaScriptClass {
 
           if (t.isJSXIdentifier(openingNode)) {
             const openingNodeName = openingNode.name;
+            const mappedOpeningNodeName = nodeNameMap(openingNodeName);
 
-            switch (openingNodeName) {
-              case 'p':
-              case 'div':
-              case 'li':
-              case 'h1':
-              case 'h2':
-              case 'h3':
-              case 'h4':
-              case 'h5':
-              case 'h6':
-              case 'quoteblock':
-                openingNode.name = 'view';
-                this.replacingClosingElementWithName(closingElement, 'view');
-
-                break;
-
-              case 'span':
-              case 'b':
-              case 's':
-              case 'code':
-              case 'quote':
-              case 'cite':
-                openingNode.name = 'text';
-                this.replacingClosingElementWithName(closingElement, 'text');
-
-                break;
-              default:
-                // if (builtInElements[openingNodeName] === undefined) {
-                //   openingNode.name = 'view';
-                //   this.replacingClosingElementWithName(closingElement, 'view');
-                // }
-                break;
-            }
+            openingNode.name = mappedOpeningNodeName;
+            this.replacingClosingElementWithName(
+              closingElement,
+              mappedOpeningNodeName
+            );
           }
         },
         exit: path => {

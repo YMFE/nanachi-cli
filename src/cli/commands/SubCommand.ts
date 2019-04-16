@@ -1,11 +1,7 @@
 import yargs from 'yargs';
+import SubCommandAbstract, { InterfaceSubCommand } from './SubCommandAbstract';
 
-export interface InterfaceSubCommand {
-  name: string;
-  argv: yargs.Arguments;
-}
-
-class SubCommand {
+abstract class SubCommand implements SubCommandAbstract {
   public argv: yargs.Arguments;
   public name: string;
   public cwd: string = process.cwd();
@@ -26,6 +22,8 @@ class SubCommand {
   public exit(code: number = 0) {
     process.exit(code);
   }
+
+  public abstract run(): void;
 }
 
 export default SubCommand;

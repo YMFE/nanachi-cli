@@ -1,10 +1,10 @@
 import { transformFromAstSync } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
-import builtInElements from '@platforms/WeixinLike/builtInElements';
+import nodeNameMap from '@platforms/WeixinLike/nodeNameMap';
 import Template from '@platforms/WeixinLike/Template';
+import DuplexResource from '@resources/DuplexResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
@@ -53,7 +53,7 @@ class Stateless extends JavaScript {
   }
 
   private deriveJSON() {
-    const jsonResource = new WritableResource({
+    const jsonResource = new DuplexResource({
       rawPath: this.pathWithoutExt + '.json',
       transpiler: this.transpiler
     });
@@ -265,39 +265,13 @@ class Stateless extends JavaScript {
 
           if (t.isJSXIdentifier(openingNode)) {
             const openingNodeName = openingNode.name;
+            const mappedOpeningNodeName = nodeNameMap(openingNodeName);
 
-            switch (openingNodeName) {
-              case 'p':
-              case 'div':
-              case 'li':
-              case 'h1':
-              case 'h2':
-              case 'h3':
-              case 'h4':
-              case 'h5':
-              case 'h6':
-              case 'quoteblock':
-                openingNode.name = 'view';
-                this.replacingClosingElementWithName(closingElement, 'view');
-
-                break;
-
-              case 'span':
-              case 'b':
-              case 's':
-              case 'code':
-              case 'quote':
-              case 'cite':
-                openingNode.name = 'text';
-                this.replacingClosingElementWithName(closingElement, 'text');
-
-                break;
-              default:
-                if (builtInElements[openingNodeName] === undefined) {
-                  openingNode.name = 'view';
-                  this.replacingClosingElementWithName(closingElement, 'view');
-                }
-            }
+            openingNode.name = mappedOpeningNodeName;
+            this.replacingClosingElementWithName(
+              closingElement,
+              mappedOpeningNodeName
+            );
           }
           this.transformIfNodeIsComponent(path);
         },
@@ -338,9 +312,8 @@ class Stateless extends JavaScript {
       if (attributeName.name === 'src') {
         if (t.isStringLiteral(attributeValue)) {
           if (/^https?:\/\//.test(attributeValue.value)) {
-            // console.log('remote: ', attributeValue.value);
+            // remote assets
           } else {
-            // console.log('local: ', attributeValue.value);
             const id = attributeValue.value;
             const { location } = this.transpiler.resolveSync(id, this.dir);
             attributeValue.value = location;

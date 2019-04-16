@@ -4,9 +4,9 @@ import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
 import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 import Style from '@languages/style/Style';
 import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
+import DuplexResource from '@resources/DuplexResource';
 import FileResource from '@resources/FileResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import ResolveServices from '@services/ResolveServices';
 import reportError from '@shared/reportError';
 import path from 'path';
@@ -34,7 +34,7 @@ class Transpiler {
   public cwd: string = process.cwd();
   public platform: Platforms;
   public command: SubCommand;
-  public resources: Map<string, WritableResource> = new Map();
+  public resources: Map<string, DuplexResource> = new Map();
   public transpilerRoot: string = path.resolve(__dirname, '..');
 
   private resolveServices: ResolveServices;
@@ -69,7 +69,7 @@ class Transpiler {
     await this.emit();
   }
 
-  public addResource(rawPath: string, resource: WritableResource) {
+  public addResource(rawPath: string, resource: DuplexResource) {
     if (this.resources.has(rawPath)) return;
 
     resource.emit = true;

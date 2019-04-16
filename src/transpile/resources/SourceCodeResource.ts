@@ -1,8 +1,8 @@
 import { File } from '@babel/types';
+import DuplexResource from './DuplexResource';
 import { ErrorReportableResourceState } from './Resource';
-import WritableResource from './WritableResource';
 
-class SourceCodeResource extends WritableResource {
+class SourceCodeResource extends DuplexResource {
   public sourceCode: string;
   public ast: File;
   public sourceMap: object;

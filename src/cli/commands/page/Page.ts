@@ -1,4 +1,4 @@
-import { InterfaceSubCommand } from '@commands/SubCommand';
+import { InterfaceSubCommand } from '@commands/SubCommandAbstract';
 import createPageTemplate from './createPageTemplate';
 import EntityInitialization from './EntityInitialization';
 

@@ -32,19 +32,10 @@ class JavaScript extends SourceCodeResource {
   }
 
   public generate() {
-    // this.removeDeadCode();
     const { code } = generate(this.ast);
     this.setContent(code);
     this.emit = true;
     this.emitted = false;
-  }
-
-  private removeDeadCode() {
-    const res = transformFromAstSync(this.ast, undefined, {
-      // plugins: [[require('babel-plugin-danger-remove-unused-import'), {ignore: ['react']}]],
-      ast: true
-    });
-    this.ast = res!.ast!;
   }
 
   private replaceEnvironment() {

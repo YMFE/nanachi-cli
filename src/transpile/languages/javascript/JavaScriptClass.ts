@@ -1,8 +1,8 @@
 import { transformFromAstSync } from '@babel/core';
 import traverse, { NodePath } from '@babel/traverse';
 import t from '@babel/types';
+import DuplexResource from '@resources/DuplexResource';
 import { ErrorReportableResourceState } from '@resources/Resource';
-import WritableResource from '@resources/WritableResource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
@@ -48,7 +48,7 @@ class JavaScriptClass extends JavaScript {
   }
 
   public deriveJSON() {
-    const jsonResource = new WritableResource({
+    const jsonResource = new DuplexResource({
       rawPath: this.pathWithoutExt + '.json',
       transpiler: this.transpiler
     });
