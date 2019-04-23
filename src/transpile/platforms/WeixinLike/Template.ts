@@ -2,7 +2,7 @@ import { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import { IDerivedResource } from '@resources/DerivedCodeResource';
 import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversable';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import blockElements from './blockElements';
@@ -35,7 +35,7 @@ class Template extends DerivedJavaScriptTraversable {
     this.traverse();
     this.deriveJSON();
 
-    this.setContent(this.templateLiteral);
+    this.utf8Content = this.templateLiteral;
   }
 
   public get templateLiteral() {
@@ -485,7 +485,7 @@ class Template extends DerivedJavaScriptTraversable {
           return [this.transformLogicalExpressionToConditionalExpression(node)];
         }
 
-        this.state = ErrorReportableResourceState.Error;
+        this.state = ResourceState.Error;
         this.error = new Error(
           'In `render` method, only single ReturnStatement, IfStatement and LogicalExpression' +
             `are allowed, got ${node.type}`
@@ -515,7 +515,7 @@ class Template extends DerivedJavaScriptTraversable {
   }
 
   private reportInvalidConsequent(consequent: t.BlockStatement) {
-    this.state = ErrorReportableResourceState.Error;
+    this.state = ResourceState.Error;
     this.error = new Error(
       'IfStatement in render method must contain and only ' +
         'contain one ReturnStatement, got ' +

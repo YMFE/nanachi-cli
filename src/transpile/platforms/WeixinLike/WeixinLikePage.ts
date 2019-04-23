@@ -3,7 +3,7 @@ import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
 import Stateless from '@languages/javascript/Stateless';
 import DuplexResource from '@resources/DuplexResource';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import uid from '@shared/uid';
@@ -254,11 +254,14 @@ class WeixinLikePage extends JavaScriptClass {
             const { location } = this.transpiler.resolveSync(id, this.dir);
             const imageResource = new DuplexResource({
               rawPath: location,
-              transpiler: this.transpiler
+              transpiler: this.transpiler,
+              encoding: null
             });
-            imageResource.read();
+            imageResource.readSync();
+            imageResource.writeSync();
             this.transpiler.addResource(location, imageResource);
-            attributeValue.value = this.relativeFromSourceDirTo(location);
+
+            attributeValue.value = this.relativeOfSourceDirTo(location);
           }
         }
       }
@@ -315,13 +318,13 @@ class WeixinLikePage extends JavaScriptClass {
                 }
               }
 
-              this.state = ErrorReportableResourceState.Error;
+              this.state = ResourceState.Error;
               this.error =
-                `Props "style"'s value's type should be one of ` +
+                new Error(`Props "style"'s value's type should be one of ` +
                 `Identifier, MemberExpression or ObjectExpression,` +
                 ` got "${generate(expression)}" at line ${
                   expression.loc ? expression.loc.start.line : 'unknown'
-                }`;
+                }`);
               reportError(this);
               break;
           }

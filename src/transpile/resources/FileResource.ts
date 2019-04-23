@@ -9,65 +9,58 @@ class FileResource extends Resource {
   public rawPath: string;
 
   private parsedPath: path.ParsedPath;
-  private customDestPath: string;
-  private customDestExt: string;
+  private parsedDestPath: path.ParsedPath;
 
   constructor({ rawPath, ...resource }: IFileResource) {
     super(resource);
 
-    this.init(rawPath);
     this.rawPath = rawPath;
+    this.init();
   }
 
-  public relativeFromSource(from: string) {
+  public relativePathOfSource(from: string) {
     return path.relative(from, this.rawPath);
   }
 
-  public relativeFromDest(from: string) {
+  public relativePathOfDest(from: string) {
     return path.relative(from, this.destPath);
   }
 
-  public relativeFromSourceDirTo(to: string) {
+  public relativeOfSourceDirTo(to: string) {
     return path.relative(this.dir, to);
   }
 
-  public relativeFromDestDirTo(to: string) {
+  public relativeOfDestDirTo(to: string) {
     return path.relative(this.destDir, to);
   }
 
-  public setCustomDestPath(destPath: string) {
-    this.customDestPath = destPath;
-  }
-
-  private init(rawPath: string) {
-    this.parsedPath = path.parse(rawPath);
-  }
-
   public get destPath() {
-    if (this.customDestPath) return this.customDestPath;
+    const { dir } = this.parsedDestPath;
+    return path.join(dir, this.destFilename);
+  }
 
-    const relativePath = this.relativeFromSource(
-      this.transpiler.projectSourceDirectory
-    );
-    const intermediatePath = path.resolve(
-      this.transpiler.projectDestDirectory,
-      relativePath
-    );
-    const { dir, name } = path.parse(intermediatePath);
-
-    return path.join(dir, `${name}${this.destExt}`);
+  public set destPath(destPath: string) {
+    this.parsedDestPath = path.parse(destPath);
   }
 
   public get destDir() {
-    return path.parse(this.destPath).dir;
+    return this.parsedDestPath.dir;
+  }
+
+  public set destDir(destDir: string) {
+    this.parsedDestPath.dir = destDir;
+  }
+
+  public get destFilename() {
+    return this.parsedDestPath.name + this.parsedDestPath.ext;
   }
 
   public get destExt() {
-    return this.customDestExt || this.ext;
+    return this.parsedDestPath.ext;
   }
 
   public set destExt(ext: string) {
-    this.customDestExt = ext;
+    this.parsedDestPath.ext = ext;
   }
 
   public get ext() {
@@ -76,6 +69,10 @@ class FileResource extends Resource {
 
   public get name() {
     return this.parsedPath.name;
+  }
+
+  public get filename() {
+    return this.parsedPath.name + this.parsedPath.ext;
   }
 
   public get dir() {
@@ -88,6 +85,25 @@ class FileResource extends Resource {
 
   public get pathWithoutExt() {
     return path.resolve(this.dir, this.name);
+  }
+
+  private init() {
+    this.parsedPath = path.parse(this.rawPath);
+    this.parsedDestPath = {
+      ...this.parsedPath
+    };
+    this.initDest();
+  }
+
+  private initDest() {
+    const relativePathOfSource = this.relativePathOfSource(
+      this.transpiler.projectSourceDirectory
+    );
+    const destPath = path.resolve(
+      this.transpiler.projectDestDirectory,
+      relativePathOfSource
+    );
+    this.parsedDestPath = path.parse(destPath);
   }
 }
 

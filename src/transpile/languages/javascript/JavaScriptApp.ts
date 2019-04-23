@@ -1,5 +1,5 @@
 import t from '@babel/types';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import reportError from '@shared/reportError';
 import chalk from 'chalk';
 import fs from 'fs-extra';
@@ -38,7 +38,7 @@ class JavaScriptApp extends JavaScriptClass {
   private async checkAppValid() {
     if (await fs.pathExists(this.rawPath)) return;
 
-    this.state = ErrorReportableResourceState.Error;
+    this.state = ResourceState.Error;
     this.error = new Error(
       chalk`Invalid entry file path ({underline.bold.red ${this.rawPath}})`
     );
@@ -47,8 +47,8 @@ class JavaScriptApp extends JavaScriptClass {
   }
 
   private reset() {
-    this.state = ErrorReportableResourceState.Ready;
-    this.error = '';
+    this.state = ResourceState.Ready;
+    this.error = null;
   }
 
   private async resolveResourceLocation(id: string) {
@@ -71,7 +71,7 @@ class JavaScriptApp extends JavaScriptClass {
 
         await this.transpiler.processResource(id, location);
       } catch (error) {
-        this.state = ErrorReportableResourceState.Error;
+        this.state = ResourceState.Error;
         this.error = error;
         reportError(this);
       }

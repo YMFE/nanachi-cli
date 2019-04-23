@@ -19,12 +19,12 @@ class Style extends SourceCodeResource {
   }
 
   private async transform() {
-    const result = await postcss(this.plugins).process(this.content, {
+    const result = await postcss(this.plugins).process(this.utf8Content, {
       syntax: scss,
       from: this.rawPath
     });
 
-    this.setContent(result.css.toString());
+    this.utf8Content = result.css.toString();
     this.destExt = '.wxss';
   }
 

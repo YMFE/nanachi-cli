@@ -4,7 +4,7 @@ import t from '@babel/types';
 import nodeNameMap from '@platforms/WeixinLike/nodeNameMap';
 import Template from '@platforms/WeixinLike/Template';
 import DuplexResource from '@resources/DuplexResource';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
@@ -58,7 +58,7 @@ class Stateless extends JavaScript {
       transpiler: this.transpiler
     });
 
-    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
+    jsonResource.utf8Content = JSON.stringify(this.configObject, null, 4);
 
     this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
@@ -373,13 +373,14 @@ class Stateless extends JavaScript {
                 }
               }
 
-              this.state = ErrorReportableResourceState.Error;
-              this.error =
+              this.state = ResourceState.Error;
+              this.error = new Error(
                 `Props "style"'s value's type should be one of ` +
-                `Identifier, MemberExpression or ObjectExpression,` +
-                ` got "${generate(expression)}" at line ${
-                  expression.loc ? expression.loc.start.line : 'unknown'
-                }`;
+                  `Identifier, MemberExpression or ObjectExpression,` +
+                  ` got "${generate(expression)}" at line ${
+                    expression.loc ? expression.loc.start.line : 'unknown'
+                  }`
+              );
               reportError(this);
               break;
           }

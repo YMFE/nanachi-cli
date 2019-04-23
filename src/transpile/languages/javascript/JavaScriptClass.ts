@@ -2,7 +2,7 @@ import { transformFromAstSync } from '@babel/core';
 import traverse, { NodePath } from '@babel/traverse';
 import t from '@babel/types';
 import DuplexResource from '@resources/DuplexResource';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
 import { transformArrowFunctionToBindFunction } from '@shared/transform';
@@ -53,7 +53,7 @@ class JavaScriptClass extends JavaScript {
       transpiler: this.transpiler
     });
 
-    jsonResource.setContent(JSON.stringify(this.configObject, null, 4));
+    jsonResource.utf8Content = JSON.stringify(this.configObject, null, 4);
 
     this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
@@ -105,7 +105,7 @@ class JavaScriptClass extends JavaScript {
             this.error = new Error(
               'Anonymous ClassDeclaration is not allowed in App or Page or Component'
             );
-            this.state = ErrorReportableResourceState.Error;
+            this.state = ResourceState.Error;
             reportError(this);
 
             return;

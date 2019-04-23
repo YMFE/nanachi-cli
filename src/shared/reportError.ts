@@ -1,11 +1,11 @@
 import FileResource from '@resources/FileResource';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import chalk from 'chalk';
 import { log, stop } from './spinner';
 
 function reportError(resource: FileResource) {
-  if (resource.state === ErrorReportableResourceState.Error) {
-    const error = resource.error.toString();
+  if (resource.state === ResourceState.Error) {
+    const error = resource.error!.toString();
 
     log(chalk`{red.bold CompileError:}`);
     log(

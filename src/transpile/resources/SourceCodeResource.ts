@@ -1,6 +1,6 @@
 import { File } from '@babel/types';
 import DuplexResource from './DuplexResource';
-import { ErrorReportableResourceState } from './Resource';
+import { ResourceState } from './Resource';
 
 class SourceCodeResource extends DuplexResource {
   public sourceCode: string;
@@ -8,12 +8,12 @@ class SourceCodeResource extends DuplexResource {
   public sourceMap: object;
 
   public async load() {
-    this.state = ErrorReportableResourceState.Ready;
-    this.error = '';
+    this.state = ResourceState.Ready;
+    this.error = null;
 
     await this.read();
 
-    this.sourceCode = this.content;
+    this.sourceCode = this.utf8Content;
   }
 }
 

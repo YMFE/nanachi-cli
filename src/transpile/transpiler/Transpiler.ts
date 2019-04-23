@@ -6,7 +6,7 @@ import Style from '@languages/style/Style';
 import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
 import DuplexResource from '@resources/DuplexResource';
 import FileResource from '@resources/FileResource';
-import { ErrorReportableResourceState } from '@resources/Resource';
+import { ResourceState } from '@resources/Resource';
 import ResolveServices from '@services/ResolveServices';
 import reportError from '@shared/reportError';
 import path from 'path';
@@ -90,9 +90,7 @@ class Transpiler {
           transpiler: this
         });
 
-        reactResource.setCustomDestPath(
-          path.resolve(this.projectDestDirectory, 'lib/React.js')
-        );
+        reactResource.destPath = path.resolve(this.projectDestDirectory, 'lib/React.js');
         this.resources.set(location, reactResource);
         await reactResource.process();
         reactResource.emit = true;
@@ -159,9 +157,7 @@ class Transpiler {
       transpiler: this
     });
     await resource.process();
-    resource.setCustomDestPath(
-      path.resolve(this.projectDestDirectory, 'lib/runtime.js')
-    );
+    resource.destPath = path.resolve(this.projectDestDirectory, 'lib/runtime.js');
     this.addResource(location, resource);
   }
 
@@ -174,7 +170,7 @@ class Transpiler {
       try {
         await resource.write();
       } catch (error) {
-        resource.state = ErrorReportableResourceState.Error;
+        resource.state = ResourceState.Error;
         resource.error = error;
         reportError(resource);
       }
@@ -197,7 +193,7 @@ class Transpiler {
     return resourceKeys.some(
       resourceKey =>
         (this.resources.get(resourceKey) as FileResource).state ===
-        ErrorReportableResourceState.Error
+        ResourceState.Error
     );
   }
 

@@ -18,10 +18,6 @@ class PlainJavaScript extends JavaScript {
     super.generate();
   }
 
-  private register() {
-    this.collectImports();
-  }
-
   private collectImports() {
     this.registerTraverseOption({
       ImportDeclaration: path => {
