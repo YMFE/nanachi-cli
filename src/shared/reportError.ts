@@ -7,7 +7,17 @@ function reportError(resource: FileResource) {
   if (resource.state === ResourceState.Error) {
     const error = resource.error!.toString();
 
-    log(chalk`{red.bold CompileError:}`);
+    log(chalk`{red.bold Compile Error:}`);
+    log(
+      chalk`  {bold.dim Source File Path:} {bold.underline ${resource.rawPath}}`
+    );
+    stop(chalk`  {bold.dim Error Message:} {bold ${error}}`);
+  }
+
+  if (resource.state === ResourceState.FatalError) {
+    const error = resource.error!.toString();
+
+    log(chalk`{red.bold Fatal Error:}`);
     log(
       chalk`  {bold.dim SourceFilePath:} {bold.underline ${resource.rawPath}}`
     );

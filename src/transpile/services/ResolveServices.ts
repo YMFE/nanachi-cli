@@ -7,7 +7,7 @@ type TypeResolveCache = 'alias' | 'resolve';
 
 interface InterfaceResolveCache {
   id: string;
-  base: string;
+  base?: string;
   location: string;
   type: TypeResolveCache;
 }
@@ -29,7 +29,7 @@ class ResolveServices {
     this.prepareRegeneratorRuntime();
   }
 
-  public async resolve(id: string, base: string) {
+  public async resolve(id: string, base?: string) {
     const hit = this.searchCache(id, base);
 
     if (hit) return hit;
@@ -94,16 +94,16 @@ class ResolveServices {
 
   private innerResolveSync(id: string, base: string) {
     const location = resolve.sync(id, { basedir: base });
-    const result = this.buildResolveResult(id, base, location);
+    const result = this.buildResolveResult(id, location, 'resolve', base);
     this.caches.push(result);
     return result;
   }
 
   private buildResolveResult(
     id: string,
-    base: string,
     location: string,
-    type: TypeResolveCache = 'resolve'
+    type: TypeResolveCache = 'resolve',
+    base?: string
   ) {
     const resolveResult: InterfaceResolveCache = {
       id,
@@ -117,7 +117,7 @@ class ResolveServices {
 
   private async innerResolve(
     id: string,
-    base: string
+    base?: string
   ): Promise<InterfaceResolveCache> {
     return new Promise((promiseResolve, reject) => {
       resolve(id, { basedir: base }, (err, location) => {
@@ -125,7 +125,12 @@ class ResolveServices {
 
         if (location === undefined) return reject(err);
 
-        const resolveResult = this.buildResolveResult(id, base, location);
+        const resolveResult = this.buildResolveResult(
+          id,
+          location,
+          'resolve',
+          base
+        );
 
         promiseResolve(resolveResult);
 
@@ -145,11 +150,11 @@ class ResolveServices {
       }
 
       this.aliasKeys.push(key);
-      this.caches.push(this.buildResolveResult(key, '', alias[key], 'alias'));
+      this.caches.push(this.buildResolveResult(key, alias[key], 'alias'));
     });
   }
 
-  private searchCache(id: string, base: string) {
+  private searchCache(id: string, base?: string) {
     const hit = this.caches.find(cache => cache.id === id);
 
     if (hit) {

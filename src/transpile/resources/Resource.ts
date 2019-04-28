@@ -9,7 +9,8 @@ export const enum ResourceState {
   Ready = 0,
   Read = 1,
   Emit = 2,
-  Emitted = 3,
+  SkipEmit = 3,
+  Emitted = 4,
   Error = -1,
   FatalError = -2
 }

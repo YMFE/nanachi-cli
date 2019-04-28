@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import FileResource, { IFileResource } from './FileResource';
 import { ResourceState } from './Resource';
 
-export interface IWritableResource extends IFileResource {
+export interface IDuplexResource extends IFileResource {
   emit?: boolean;
 }
 
@@ -10,7 +10,7 @@ class DuplexResource extends FileResource {
   public emit: boolean;
   public emitted: boolean = false;
 
-  constructor({ emit = true, ...resource }: IWritableResource) {
+  constructor({ emit = true, ...resource }: IDuplexResource) {
     super(resource);
 
     this.emit = emit;
@@ -41,11 +41,10 @@ class DuplexResource extends FileResource {
   }
 
   public async write() {
-    if (this.emit) {
+    if (this.state === ResourceState.Emit) {
       try {
-        this.emit = false;
         await fs.outputFile(this.destPath, this.utf8Content);
-        this.emitted = true;
+        this.state = ResourceState.Emitted;
       } catch (e) {
         this.state = ResourceState.Error;
         this.error = e;

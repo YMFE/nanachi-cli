@@ -4,22 +4,25 @@ import JavaScript from './JavaScript';
 class PlainJavaScript extends JavaScript {
   private importResourceIds: Set<string> = new Set();
 
+  public async prepare() {
+    await super.prepare();
+    this.registerPlainJavaScriptTransformations();
+  }
+
   public async process() {
-    await this.beforeTranspile();
+    await super.process();
+    await this.prepare();
+    await this.importSubModules();
+    await this.waitUntilAsyncProcessesCompleted();
+  }
 
-    this.collectImports();
-    this.traverse();
-    await this.addImports();
-
-    this.resetTraverseOptions();
-    this.replaceImports();
-    this.traverse();
-
-    super.generate();
+  private registerPlainJavaScriptTransformations() {
+    this.appendTransformation(this.collectImports);
+    this.appendTransformation(this.replaceImports);
   }
 
   private collectImports() {
-    this.registerTraverseOption({
+    this.transform({
       ImportDeclaration: path => {
         const id = path.node.source.value;
         this.importResourceIds.add(id);
@@ -27,39 +30,38 @@ class PlainJavaScript extends JavaScript {
     });
   }
 
-  private replaceImports() {
-    this.registerTraverseOption({
+  private async replaceImports() {
+    this.transform({
       ImportDeclaration: path => {
-        const id = path.node.source.value;
-        const location = this.transpiler.resolveSync(id, this.dir).location;
-        const resource = this.transpiler.resources.get(location);
+        async function replaceImportsAsync() {
+          const id = path.node.source.value;
+          const { location } = await this.transpiler.resolve(id, this.dir);
+          const resource = this.transpiler.resources.get(location);
+          const relativePathToSourceRoot = relative(
+            this.destDir,
+            resource!.destPath
+          );
+          const normalizedPath = relativePathToSourceRoot.startsWith('.')
+            ? relativePathToSourceRoot
+            : `./${relativePathToSourceRoot}`;
 
-        const relativePathToSourceRoot = relative(
-          this.destDir,
-          resource!.destPath
-        );
-        const normalizedPath = relativePathToSourceRoot.startsWith('.')
-          ? relativePathToSourceRoot
-          : `./${relativePathToSourceRoot}`;
-        path.node.source.value = normalizedPath;
+          path.node.source.value = normalizedPath;
+        }
+
+        this.appendAsyncProcess(replaceImportsAsync());
       }
     });
   }
 
-  private async addImports() {
+  private async importSubModules() {
     const importsBundle = Array.from(this.importResourceIds).map(async id => {
       const { location } = await this.transpiler.resolve(id, this.dir);
 
       if (this.transpiler.resources.has(location)) return;
 
-      const resource = new PlainJavaScript({
-        rawPath: location,
-        transpiler: this.transpiler
-      });
+      const resource = this.transpiler.spawnResource(location) as PlainJavaScript;
 
       await resource.process();
-
-      this.transpiler.addResource(location, resource);
     });
 
     await Promise.all(importsBundle);

@@ -3,81 +3,81 @@ import generate from '@babel/generator';
 import { parse, ParserOptions } from '@babel/parser';
 import traverse, { TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
-import SourceCodeResource from '@resources/SourceCodeResource';
+import DuplexResource from '@resources/DuplexResource';
+import { ResourceState } from '@resources/Resource';
 
-class JavaScript extends SourceCodeResource {
+type TypeAsyncTransformation = () => Promise<void>;
+type TypeSyncTransformation = () => void;
+type TypeTransformation = TypeAsyncTransformation | TypeSyncTransformation;
+
+class JavaScript extends DuplexResource {
+  protected ast: t.File;
+
   private parserOptions: ParserOptions;
-  private traverseOptions: TraverseOptions = {};
-  private regeneratorRuntimeInjected: boolean = false;
   private regeneratorRequired: boolean = false;
 
-  public async beforeTranspile() {
-    await super.load();
+  private transformations: TypeTransformation[] = [];
+  private asyncTransformationProcesses: Array<Promise<void>> = [];
+
+  public async prepare() {
+    await this.read();
     this.initOptions();
     this.parse();
-    this.replaceEnvironment();
-    this.injectRegeneratorRuntime();
   }
 
-  public registerTraverseOption(options: TraverseOptions) {
-    this.traverseOptions = { ...this.traverseOptions, ...options };
+  public async process() {
+    await this.prepare();
+    this.registerJavaScriptTransformations();
+    await this.applyTransformations();
+    await this.waitUntilAsyncProcessesCompleted();
   }
 
-  public resetTraverseOptions() {
-    this.traverseOptions = {};
+  public appendTransformation(transform: TypeTransformation) {
+    this.transformations.push(transform);
   }
 
-  public traverse() {
-    traverse(this.ast, this.traverseOptions);
+  public appendAsyncProcess(process: Promise<void>) {
+    this.asyncTransformationProcesses.push(process);
   }
 
   public generate() {
     const { code } = generate(this.ast);
     this.utf8Content = code;
-    this.emit = true;
-    this.emitted = false;
+    this.state = ResourceState.Emit;
   }
 
-  private replaceEnvironment() {
-    this.registerReplaceEnvironment();
-    this.traverse();
-    this.traverseOptions = {};
+  public transform(traverseOptions: TraverseOptions) {
+    traverse(this.ast, traverseOptions);
   }
 
-  private initOptions() {
-    this.parserOptions = {
-      sourceType: 'module',
-      sourceFilename: this.rawPath,
-      plugins: ['jsx', 'asyncGenerators', 'classProperties', 'objectRestSpread']
-    };
+  public async waitUntilAsyncProcessesCompleted() {
+    await Promise.all(this.asyncTransformationProcesses);
+    this.emptyAsyncProcesses();
   }
 
-  private parse() {
-    this.ast = parse(this.sourceCode, this.parserOptions);
-
-    const res = transformFromAstSync(this.ast, undefined, {
-      plugins: [require('@babel/plugin-transform-async-to-generator')],
-      ast: true,
-      code: false
-    });
-
-    this.ast = res!.ast!;
+  public async applyTransformations() {
+    for (const transformation of this.transformations) {
+      await transformation.call(this);
+    }
+    this.emptyTransformations();
   }
 
-  private injectRegeneratorRuntime() {
-    if (!this.regeneratorRequired) return;
-    if (this.regeneratorRuntimeInjected) return;
-
-    this.ast.program.body.unshift(
-      t.importDeclaration(
-        [t.importDefaultSpecifier(t.identifier('regeneratorRuntime'))],
-        t.stringLiteral('regenerator-runtime/runtime.js')
-      )
-    );
+  private emptyAsyncProcesses() {
+    this.asyncTransformationProcesses = [];
   }
 
-  private registerReplaceEnvironment() {
-    this.registerTraverseOption({
+  private emptyTransformations() {
+    this.transformations = [];
+  }
+
+  private registerJavaScriptTransformations() {
+    this.appendTransformation(this.locateAsyncToGenerator);
+    this.appendTransformation(this.injectRegeneratorRuntimeWhenNeeded);
+    this.appendTransformation(this.replaceEnv);
+  }
+
+  private replaceEnv() {
+    this.transform({
       MemberExpression: path => {
         const { object, property } = path.node;
 
@@ -104,19 +104,49 @@ class JavaScript extends SourceCodeResource {
             }
           }
         }
-      },
-      ImportDeclaration: path => {
-        const id = path.node.source.value;
+      }
+    });
+  }
 
-        if (id === 'regenerator-runtime/runtime.js') {
-          this.regeneratorRuntimeInjected = true;
-        }
-      },
+  private initOptions() {
+    this.parserOptions = {
+      sourceType: 'module',
+      sourceFilename: this.rawPath,
+      plugins: ['jsx', 'asyncGenerators', 'classProperties', 'objectRestSpread']
+    };
+  }
+
+  private parse() {
+    this.ast = parse(this.utf8Content, this.parserOptions);
+
+    const res = transformFromAstSync(this.ast, undefined, {
+      plugins: [require('@babel/plugin-transform-async-to-generator')],
+      ast: true,
+      code: false
+    });
+
+    this.ast = (res as any).ast;
+  }
+
+  private injectRegeneratorRuntimeWhenNeeded() {
+    if (this.regeneratorRequired) {
+      this.ast.program.body.unshift(
+        t.importDeclaration(
+          [t.importDefaultSpecifier(t.identifier('regeneratorRuntime'))],
+          t.stringLiteral('regenerator-runtime/runtime.js')
+        )
+      );
+    }
+  }
+
+  private locateAsyncToGenerator() {
+    this.transform({
       FunctionDeclaration: path => {
         const id = path.node.id;
 
         if (id && id.name === '_asyncToGenerator') {
           this.regeneratorRequired = true;
+          path.stop();
         }
       }
     });

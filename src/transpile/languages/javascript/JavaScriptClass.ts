@@ -1,5 +1,5 @@
 import { transformFromAstSync } from '@babel/core';
-import traverse, { NodePath } from '@babel/traverse';
+import traverse, { NodePath, TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
 import DuplexResource from '@resources/DuplexResource';
 import { ResourceState } from '@resources/Resource';
@@ -10,31 +10,36 @@ import uid from '@shared/uid';
 import { relative } from 'path';
 import JavaScript from './JavaScript';
 
+const enum classType {
+  state = 'state',
+  stateless = 'stateless'
+}
+
 class JavaScriptClass extends JavaScript {
-  public classIdentifier: t.Identifier;
-  public renderMethod: t.ClassMethod;
-  public configObject: any = {};
+  protected renderMethod: t.ClassMethod | t.FunctionDeclaration;
+  protected classIdentifier: t.Identifier;
+  protected configObject: any = {};
 
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
   private constructorParams: any[] = [];
   private classMethods: t.ClassMethod[] = [];
   private superClass: t.Node | null;
+  private classType: classType = classType.stateless;
 
-  public async beforeTranspile() {
-    await super.beforeTranspile();
+  public async process() {
+    await super.process();
+    this.appendClassTransformations();
+    await this.applyTransformations();
+    await this.waitUntilAsyncProcessesCompleted();
   }
 
-  public register() {
-    this.registerTransformClassToFunction();
-  }
-
-  public evalObjectSourceCode(sourceCode: string) {
+  protected evalObjectSourceCode(sourceCode: string) {
     'use strict';
     // tslint:disable-next-line: no-eval
     return eval(`(${sourceCode})`);
   }
 
-  public transformConfigToObject() {
+  protected transformConfigToObject() {
     if (this.configProperty) {
       const [, property] = this.configProperty;
 
@@ -47,33 +52,77 @@ class JavaScriptClass extends JavaScript {
     }
   }
 
-  public deriveJSON() {
+  protected deriveJSON() {
     const jsonResource = new DuplexResource({
       rawPath: this.pathWithoutExt + '.json',
       transpiler: this.transpiler
     });
 
     jsonResource.utf8Content = JSON.stringify(this.configObject, null, 4);
+    jsonResource.state = ResourceState.Emit;
 
     this.transpiler.addResource(this.pathWithoutExt + '.json', jsonResource);
   }
 
-  public injectReactLibrary() {
-    const { location } = this.transpiler.resolveSync('@react', this.dir);
-    const reactResource = this.transpiler.resources.get(location);
-    const destLocation = reactResource!.destPath;
-    const relativeReactLibraryPath = relative(this.destDir, destLocation);
-    const normalizedReactLibraryPath = relativeReactLibraryPath.startsWith('.')
-      ? relativeReactLibraryPath
-      : `./${relativeReactLibraryPath}`;
-    const importNode = t.importDeclaration(
-      [t.importDefaultSpecifier(t.identifier('React'))],
-      t.stringLiteral(normalizedReactLibraryPath)
-    );
-    this.ast.program.body.unshift(importNode);
+  protected injectReactLibrary() {
+    const inject = async () => {
+      const { location } = await this.transpiler.resolve('@react');
+      const reactResource = this.transpiler.resources.get(location);
+      const destLocation = reactResource!.destPath;
+      const relativeReactLibraryPath = relative(this.destDir, destLocation);
+      const normalizedReactLibraryPath = relativeReactLibraryPath.startsWith(
+        '.'
+      )
+        ? relativeReactLibraryPath
+        : `./${relativeReactLibraryPath}`;
+      const importNode = t.importDeclaration(
+        [t.importDefaultSpecifier(t.identifier('React'))],
+        t.stringLiteral(normalizedReactLibraryPath)
+      );
+      this.ast.program.body.unshift(importNode);
+    };
+
+    this.appendAsyncProcess(inject());
   }
 
-  public buildPageConstructor() {
+  protected transformStateJSXToReact() {
+    this.transform({
+      ClassMethod: path => {
+        if (
+          path.get('key').isIdentifier({
+            name: 'render'
+          })
+        ) {
+          this.transformArrayMap(path);
+          this.transformReact(path);
+        }
+      }
+    });
+  }
+
+  protected replaceClassDeclaration() {
+    this.transform({
+      ClassDeclaration: path => {
+        const constructor = this.isApp
+          ? []
+          : this.buildPageMultipleConstructorAssignmentExpressionStatement();
+
+        path.replaceWithMultiple([
+          this.isApp ? this.buildAppConstructor() : this.buildPageConstructor(),
+          this.buildRegisterClass(),
+          ...constructor
+        ]);
+      }
+    });
+  }
+
+  public get configProperty() {
+    return this.classProperties
+      .filter(([key]) => t.isIdentifier(key, { name: 'config' }))
+      .shift();
+  }
+
+  private buildPageConstructor() {
     return t.functionDeclaration(
       this.classIdentifier,
       this.constructorParams,
@@ -81,7 +130,7 @@ class JavaScriptClass extends JavaScript {
     );
   }
 
-  public buildAppConstructor() {
+  private buildAppConstructor() {
     return t.functionDeclaration(
       this.classIdentifier,
       this.constructorParams,
@@ -92,102 +141,194 @@ class JavaScriptClass extends JavaScript {
     );
   }
 
-  private registerTransformClassToFunction() {
-    this.registerTraverseOption({
-      ClassDeclaration: {
-        enter: path => {
-          const id = path.get('id');
-          const superClass = path.get('superClass');
+  private replaceStateless() {
+    this.transform({
+      FunctionDeclaration: path => {
+        const { id } = path.node;
 
-          if (t.isIdentifier(id.node)) {
-            this.classIdentifier = id.node;
-          } else {
-            this.error = new Error(
-              'Anonymous ClassDeclaration is not allowed in App or Page or Component'
-            );
-            this.state = ResourceState.Error;
-            reportError(this);
+        if (id !== null) {
+          const { name } = id;
+          const regexStartsWithCapitalizedLetter = /^[A-Z]/;
 
-            return;
+          if (regexStartsWithCapitalizedLetter.test(name)) {
+            this.transformArrayMap(path);
+          }
+        }
+      }
+    });
+  }
+
+  private transformState() {
+    this.appendTransformation(this.collectAndClean);
+  }
+
+  private transformStateless() {
+    this.appendTransformation(this.collectAndClean);
+    this.appendTransformation(this.replaceStateless);
+  }
+
+  private visitorsOfRemoveJSXEmptyExpression(): TraverseOptions {
+    return {
+      JSXEmptyExpression: path => {
+        path.findParent(t.isJSXExpressionContainer).remove();
+      }
+    };
+  }
+
+  private visitorsOfRemoveUnnecessaryImport(): TraverseOptions {
+    return {
+      ImportDeclaration: importPath => {
+        const { specifiers } = importPath.node;
+
+        if (specifiers.length === 0) return;
+        if (specifiers.length > 1) return;
+
+        const [specifier] = specifiers;
+
+        if (t.isImportDefaultSpecifier(specifier)) {
+          const { local } = specifier;
+
+          if (local.name === 'React') return;
+          if (local.name === 'regeneratorRuntime') return;
+
+          if (!t.isIdentifier(this.superClass)) {
+            importPath.remove();
+          }
+        }
+      }
+    };
+  }
+
+  private visitorsOfTransformIfNodeIsComponent(): TraverseOptions {
+    return {
+      JSXElement: path => {
+        this.transformIfNodeIsComponent1(path);
+      }
+    };
+  }
+
+  private transformIfNodeIsComponent1(path: NodePath<t.JSXElement>) {
+    const {
+      node: {
+        openingElement,
+        openingElement: { attributes },
+        closingElement
+      }
+    } = path;
+
+    if (t.isJSXOpeningElement(openingElement)) {
+      if (t.isJSXIdentifier(openingElement.name)) {
+        const rawName = openingElement.name.name;
+
+        if (/^[A-Z]/.test(rawName)) {
+          const useComponentNode = t.jsxMemberExpression(
+            t.jsxIdentifier('React'),
+            t.jsxIdentifier('useComponent')
+          );
+
+          openingElement.name = useComponentNode;
+
+          if (closingElement) {
+            closingElement.name = useComponentNode;
           }
 
-          this.superClass = superClass.node;
+          const callback = path.findParent(t.isCallExpression);
+          let instanceUidValue: t.Node;
 
-          return;
-        },
-        exit: path => {
-          const constructor = this.isApp
-            ? []
-            : this.buildPageMultipleConstructorAssignmentExpressionStatement();
+          if (callback) {
+            const { params } = (callback as any).node.arguments[0];
+            const [, indexNode] = params;
 
-          path.replaceWithMultiple([
-            this.isApp
-              ? this.buildAppConstructor()
-              : this.buildPageConstructor(),
-            this.buildRegisterClass(),
-            ...constructor
-          ]);
+            instanceUidValue = t.binaryExpression(
+              '+',
+              t.stringLiteral(uid.next()),
+              t.identifier(indexNode.name)
+            );
+          } else {
+            instanceUidValue = t.stringLiteral(uid.next());
+          }
 
-          traverse(this.ast, {
-            ImportDeclaration: importPath => {
-              const { specifiers } = importPath.node;
+          attributes.push(
+            t.jsxAttribute(
+              t.jsxIdentifier('data-instance-uid'),
+              t.jsxExpressionContainer(instanceUidValue)
+            )
+          );
 
-              if (specifiers.length === 0) return;
-              if (specifiers.length > 1) return;
-
-              const [specifier] = specifiers;
-
-              if (t.isImportDefaultSpecifier(specifier)) {
-                const { local } = specifier;
-
-                if (local.name === 'React') return;
-                if (local.name === 'regeneratorRuntime') return;
-
-                if (!t.isIdentifier(this.superClass)) {
-                  importPath.remove();
-                }
-              }
-            }
-          });
+          attributes.push(
+            t.jsxAttribute(t.jsxIdentifier('is'), t.stringLiteral(rawName))
+          );
         }
-      },
+      }
+    }
+  }
+
+  private visitorsOfCollectPropertyAndMethods(): TraverseOptions {
+    return {
       ClassProperty: path => {
         const key = path.get('key');
         const value = path.get('value');
 
         this.classProperties.push([key.node, value.node]);
-
-        return;
       },
-      ClassMethod: {
-        enter: path => {
-          const { key, params } = path.node;
+      ClassMethod: path => {
+        const { key, params } = path.node;
 
-          if (t.isIdentifier(key, { name: 'constructor' })) {
-            this.constructorParams = params;
-          }
-
-          this.classMethods.push(path.node);
-          this.transformArrayMap(path);
-        },
-        exit: path => {
-          this.transformArrayMap(path);
-          this.transformReact(path);
+        if (t.isIdentifier(key, { name: 'constructor' })) {
+          this.constructorParams = params;
         }
-      },
-      JSXEmptyExpression: path => {
-        path.findParent(t.isJSXExpressionContainer).remove();
-      },
-      ImportDeclaration: path => {
-        this.addExternalResource(path);
+
+        this.classMethods.push(path.node);
+      }
+    };
+  }
+
+  private collectAndClean() {
+    const visitors = {
+      ...this.visitorsOfCollectPropertyAndMethods(),
+      ...this.visitorsOfRemoveJSXEmptyExpression(),
+      ...this.visitorsOfRemoveUnnecessaryImport(),
+      ...this.visitorsOfTransformIfNodeIsComponent()
+    };
+
+    this.transform(visitors);
+  }
+
+  private identifyClassType() {
+    this.transform({
+      ClassDeclaration: path => {
+        const id = path.get('id');
+        const superClass = path.get('superClass');
+
+        if (t.isIdentifier(id.node)) {
+          this.classIdentifier = id.node;
+        } else {
+          this.error = new Error(
+            'Anonymous ClassDeclaration is not allowed in App or Page or Component'
+          );
+          this.state = ResourceState.Error;
+          reportError(this);
+        }
+
+        this.superClass = superClass.node;
+        this.classType = classType.state;
+
+        path.stop();
       }
     });
   }
 
-  public get configProperty() {
-    return this.classProperties
-      .filter(([key]) => t.isIdentifier(key, { name: 'config' }))
-      .shift();
+  private transformAccordingToClassType() {
+    if (this.classType === classType.state) {
+      this.transformState();
+    } else {
+      this.transformStateless();
+    }
+  }
+
+  private appendClassTransformations() {
+    this.appendTransformation(this.identifyClassType);
+    this.appendTransformation(this.transformAccordingToClassType);
   }
 
   private get isApp() {
@@ -347,55 +488,47 @@ class JavaScriptClass extends JavaScript {
     ) as any);
   }
 
-  private transformReact(path: NodePath<t.ClassMethod>) {
-    if (
-      path.get('key').isIdentifier({
-        name: 'render'
-      })
-    ) {
-      this.renderMethod = t.cloneDeep(path.node);
+  private transformReact(
+    path: NodePath<t.ClassMethod | t.FunctionDeclaration>
+  ) {
+    this.renderMethod = t.cloneDeep(path.node);
 
-      const renderNode = t.program([path.node.body]);
+    const renderNode = t.program([path.node.body]);
 
-      const result = transformFromAstSync(renderNode, undefined, {
-        presets: [[require('@babel/preset-react'), { pragma: 'h' }]],
-        ast: true,
-        code: false
-      });
+    const result = transformFromAstSync(renderNode, undefined, {
+      presets: [[require('@babel/preset-react'), { pragma: 'h' }]],
+      ast: true,
+      code: false
+    });
 
-      const renderRoot = result!.ast!.program.body[0];
+    const renderRoot = result!.ast!.program.body[0];
 
-      (renderRoot as t.BlockStatement).body.unshift(
-        t.variableDeclaration('var', [
-          t.variableDeclarator(
-            t.identifier('h'),
-            t.memberExpression(
-              t.identifier('React'),
-              t.identifier('createElement')
-            )
+    (renderRoot as t.BlockStatement).body.unshift(
+      t.variableDeclaration('var', [
+        t.variableDeclarator(
+          t.identifier('h'),
+          t.memberExpression(
+            t.identifier('React'),
+            t.identifier('createElement')
           )
-        ])
-      );
+        )
+      ])
+    );
 
-      (path.node.body as any) = renderRoot;
-    }
+    (path.node.body as any) = renderRoot;
   }
 
-  private transformArrayMap(path: NodePath<t.ClassMethod>) {
-    if (
-      path.get('key').isIdentifier({
-        name: 'render'
-      })
-    ) {
-      path.traverse({
-        CallExpression: callPath => {
-          this.transformArrayMapCallExpression(callPath);
-        },
-        ArrowFunctionExpression: callPath => {
-          this.transformArrayMapArrowExpression(callPath);
-        }
-      });
-    }
+  private transformArrayMap(
+    path: NodePath<t.ClassMethod | t.FunctionDeclaration>
+  ) {
+    path.traverse({
+      CallExpression: callPath => {
+        this.transformArrayMapCallExpression(callPath);
+      },
+      ArrowFunctionExpression: callPath => {
+        this.transformArrayMapArrowExpression(callPath);
+      }
+    });
   }
 
   private buildClassUid() {

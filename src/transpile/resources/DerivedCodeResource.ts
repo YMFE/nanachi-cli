@@ -1,12 +1,12 @@
-import DuplexResource, { IWritableResource } from './DuplexResource';
-import SourceCodeResource from './SourceCodeResource';
+import DuplexResource, { IDuplexResource } from './DuplexResource';
+import Resource from './Resource';
 
-export interface IDerivedResource extends IWritableResource {
-  creator: SourceCodeResource;
+export interface IDerivedResource extends IDuplexResource {
+  creator: Resource;
 }
 
 class DerivedCodeResource extends DuplexResource {
-  public creator: SourceCodeResource;
+  public creator: Resource;
 
   constructor({ creator, ...resource }: IDerivedResource) {
     super(resource);
@@ -14,9 +14,9 @@ class DerivedCodeResource extends DuplexResource {
     this.creator = creator;
   }
 
-  public get root(): SourceCodeResource {
+  public get rootCreator(): Resource {
     if (this.creator instanceof DerivedCodeResource) {
-      return this.creator.root;
+      return this.creator.rootCreator;
     }
     return this.creator;
   }

@@ -35,8 +35,7 @@ class FileResource extends Resource {
   }
 
   public get destPath() {
-    const { dir } = this.parsedDestPath;
-    return path.join(dir, this.destFilename);
+    return path.join(this.destDir, this.destFilename);
   }
 
   public set destPath(destPath: string) {
@@ -103,6 +102,7 @@ class FileResource extends Resource {
       this.transpiler.projectDestDirectory,
       relativePathOfSource
     );
+
     this.parsedDestPath = path.parse(destPath);
   }
 }

@@ -1,7 +1,6 @@
-import { NodePath } from '@babel/traverse';
+import { NodePath, TraverseOptions } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
-import Stateless from '@languages/javascript/Stateless';
 import DuplexResource from '@resources/DuplexResource';
 import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
@@ -13,36 +12,14 @@ import Template from './Template';
 
 class WeixinLikePage extends JavaScriptClass {
   public async process() {
-    await this.beforeTranspile();
-    this.register();
-    this.registerExport();
-
-    try {
-      super.traverse();
-      this.removeUnnecessaryImports();
-      this.deriveTemplate();
-      this.transformConfigToObject();
-      this.replaceNavigationBarTextStyle();
-      this.deriveJSON();
-      this.generate();
-    } catch (e) {
-      await this.replaceWithStatelessWhenComponentIsStateless();
-    }
-  }
-
-  public async beforeTranspile() {
-    await super.beforeTranspile();
-  }
-
-  public register() {
-    super.register();
-    this.registerAttrName();
-  }
-
-  private removeUnnecessaryImports() {
-    this.resetTraverseOptions();
-    this.registerRemoveImports();
-    this.traverse();
+    await super.process();
+    this.transformConfigToObject();
+    this.appendWeixinLikeTransformations();
+    await this.applyTransformations();
+    await this.waitUntilAsyncProcessesCompleted();
+    this.deriveClassTemplate();
+    this.generate();
+    this.deriveJSON();
   }
 
   private get relativePathToSourceRoot() {
@@ -62,9 +39,27 @@ class WeixinLikePage extends JavaScriptClass {
     return this.classIdentifier.name;
   }
 
+  private appendWeixinLikeTransformations() {
+    this.appendTransformation(this.registerNativeAndRemoveImports);
+    this.appendTransformation(this.replaceNavigationBarTextStyle);
+    this.appendTransformation(this.injectReactLibrary);
+    this.appendTransformation(this.transformStateJSXToReact);
+    this.appendTransformation(this.replaceClassDeclaration);
+  }
+
   private registerExport() {
-    if (this.isComponent) return this.registerNativeComponent();
-    this.registerNativePage();
+    if (this.isComponent) return this.visitorsOfRegisterNativeComponent();
+    return this.visitorsOfRegisterNativePage();
+  }
+
+  private registerNativeAndRemoveImports() {
+    const visitors = {
+      ...this.registerExport(),
+      ...this.visitorsOfRegisterRemoveImports(),
+      ...this.visitorsOfRegisterAttrName()
+    };
+
+    this.transform(visitors);
   }
 
   private replaceNavigationBarTextStyle() {
@@ -87,32 +82,24 @@ class WeixinLikePage extends JavaScriptClass {
     }
   }
 
-  private async replaceWithStatelessWhenComponentIsStateless() {
-    if (this.classIdentifier) return;
-
-    const stateless = new Stateless({
-      rawPath: this.rawPath,
-      transpiler: this.transpiler
-    });
-
-    await stateless.process();
-    this.transpiler.addResource(this.rawPath, stateless);
-  }
-
-  private registerRemoveImports() {
-    this.registerTraverseOption({
+  private visitorsOfRegisterRemoveImports(): TraverseOptions {
+    return {
       ImportDeclaration: path => {
         const id = path.node.source.value;
 
         if (id.endsWith('.scss')) {
           path.remove();
         }
+
+        if (id === '@react') {
+          path.remove();
+        }
       }
-    });
+    };
   }
 
-  private registerNativeComponent() {
-    this.registerTraverseOption({
+  private visitorsOfRegisterNativeComponent(): TraverseOptions {
+    return {
       ExportDefaultDeclaration: path => {
         path.insertBefore(
           t.expressionStatement(
@@ -128,11 +115,11 @@ class WeixinLikePage extends JavaScriptClass {
           )
         );
       }
-    });
+    };
   }
 
-  private registerNativePage() {
-    this.registerTraverseOption({
+  private visitorsOfRegisterNativePage(): TraverseOptions {
+    return {
       ExportDefaultDeclaration: path => {
         path.insertBefore(
           t.expressionStatement(
@@ -151,10 +138,10 @@ class WeixinLikePage extends JavaScriptClass {
           )
         );
       }
-    });
+    };
   }
 
-  private deriveTemplate() {
+  private deriveClassTemplate() {
     this.configObject = this.isComponent
       ? { component: true }
       : this.configObject;
@@ -168,6 +155,7 @@ class WeixinLikePage extends JavaScriptClass {
     });
 
     template.process();
+    template.state = ResourceState.Emit;
 
     this.transpiler.addResource(template.rawPath, template);
   }
@@ -319,12 +307,13 @@ class WeixinLikePage extends JavaScriptClass {
               }
 
               this.state = ResourceState.Error;
-              this.error =
-                new Error(`Props "style"'s value's type should be one of ` +
-                `Identifier, MemberExpression or ObjectExpression,` +
-                ` got "${generate(expression)}" at line ${
-                  expression.loc ? expression.loc.start.line : 'unknown'
-                }`);
+              this.error = new Error(
+                `Props "style"'s value's type should be one of ` +
+                  `Identifier, MemberExpression or ObjectExpression,` +
+                  ` got "${generate(expression)}" at line ${
+                    expression.loc ? expression.loc.start.line : 'unknown'
+                  }`
+              );
               reportError(this);
               break;
           }
@@ -333,38 +322,35 @@ class WeixinLikePage extends JavaScriptClass {
     }
   }
 
-  private registerAttrName() {
-    this.registerTraverseOption({
+  private visitorsOfRegisterAttrName(): TraverseOptions {
+    return {
       JSXAttribute: path => {
         this.replaceAttributeName(path);
         this.replaceAssetsPath(path);
         this.replaceStyle(path);
       },
-      JSXElement: {
-        enter: path => {
-          const openingElement = path.get('openingElement');
-          const closingElement = path.get('closingElement');
-          const openingNode = openingElement.get('name').node;
+      JSXElement: path => {
+        const openingElement = path.get('openingElement');
+        const closingElement = path.get('closingElement');
+        const openingNode = openingElement.get('name').node;
 
-          if (t.isJSXIdentifier(openingNode)) {
-            const openingNodeName = openingNode.name;
-            const mappedOpeningNodeName = nodeNameMap(openingNodeName);
+        if (t.isJSXIdentifier(openingNode)) {
+          const openingNodeName = openingNode.name;
+          const mappedOpeningNodeName = nodeNameMap(openingNodeName);
 
-            openingNode.name = mappedOpeningNodeName;
-            this.replacingClosingElementWithName(
-              closingElement,
-              mappedOpeningNodeName
-            );
-          }
-        },
-        exit: path => {
-          this.transformIfNodeIsComponent(path);
+          openingNode.name = mappedOpeningNodeName;
+          this.replacingClosingElementWithName(
+            closingElement,
+            mappedOpeningNodeName
+          );
         }
+        // this.transformIfNodeIsComponent(path);
       }
-    });
+    };
   }
 
   private transformIfNodeIsComponent(path: NodePath<t.JSXElement>) {
+    // debugger;
     const {
       node: {
         openingElement,

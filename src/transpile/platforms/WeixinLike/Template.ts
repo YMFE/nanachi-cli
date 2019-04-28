@@ -11,12 +11,12 @@ import inlineElements from './inlineElements';
 import platformSpecificFragments from './platformSpecificFragments';
 
 interface ITemplate extends IDerivedResource {
-  renderMethod: t.ClassMethod | t.FunctionDeclaration;
+  renderMethod: t.ClassMethod | t.FunctionDeclaration | t.FunctionExpression;
   configObject?: any;
 }
 
 class Template extends DerivedJavaScriptTraversable {
-  public renderMethod: t.ClassMethod | t.FunctionDeclaration;
+  public renderMethod: t.ClassMethod | t.FunctionDeclaration | t.FunctionExpression;
 
   private usingComponents: string[] = [];
   private configObject: any = null;

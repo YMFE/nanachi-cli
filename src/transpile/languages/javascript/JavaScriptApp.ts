@@ -10,45 +10,35 @@ class JavaScriptApp extends JavaScriptClass {
 
   public async process() {
     await this.checkAppValid();
-    this.reset();
-    await this.beforeTranspile();
-    this.register();
-    this.traverse();
-    await this.processResources();
-    this.injectReactLibrary();
-    super.generate();
+    await super.process();
+    this.appendAppTransformations();
+    await this.applyTransformations();
+    await this.waitUntilAsyncProcessesCompleted();
     this.transformConfigToObject();
-    this.injectPages();
     this.deriveJSON();
-  }
-
-  public async beforeTranspile() {
-    await super.beforeTranspile();
-  }
-
-  public register() {
-    super.register();
-    this.registerTransformApp();
+    this.generate();
   }
 
   public get appJSONString() {
     return JSON.stringify(this.configObject, null, 4);
   }
 
+  private appendAppTransformations() {
+    this.appendTransformation(this.registerTransformApp);
+    this.appendTransformation(this.injectPages);
+    this.appendTransformation(this.processResources);
+    this.appendTransformation(this.injectReactLibrary);
+  }
+
   private async checkAppValid() {
     if (await fs.pathExists(this.rawPath)) return;
 
-    this.state = ResourceState.Error;
+    this.state = ResourceState.FatalError;
     this.error = new Error(
       chalk`Invalid entry file path ({underline.bold.red ${this.rawPath}})`
     );
     reportError(this);
     this.transpiler.command.exit(-1);
-  }
-
-  private reset() {
-    this.state = ResourceState.Ready;
-    this.error = null;
   }
 
   private async resolveResourceLocation(id: string) {
@@ -68,8 +58,8 @@ class JavaScriptApp extends JavaScriptClass {
 
       try {
         const { location } = await this.resolveResourceLocation(id);
-
-        await this.transpiler.processResource(id, location);
+        const resource = this.transpiler.spawnResource(location);
+        await resource.process();
       } catch (error) {
         this.state = ResourceState.Error;
         this.error = error;
@@ -92,7 +82,7 @@ class JavaScriptApp extends JavaScriptClass {
   }
 
   private registerTransformApp() {
-    this.registerTraverseOption({
+    this.transform({
       ImportDeclaration: path => {
         this.imports.push(path.get('source').node);
         path.remove();
