@@ -4,7 +4,7 @@ import JavaScriptApp from '@languages/javascript/JavaScriptApp';
 import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
 import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 import Style from '@languages/style/Style';
-import WeixinLikePage from '@platforms/WeixinLike/WeixinLikePage';
+import WeixinLikeComponentOrPage from '@platforms/WeixinLike/WeixinLikeComponentOrPage';
 import BinaryResource from '@resources/BinaryResource';
 import DuplexResource from '@resources/DuplexResource';
 import Resource, { ResourceState } from '@resources/Resource';
@@ -103,7 +103,7 @@ class Transpiler {
     if (/\.js$/.test(location)) {
       const isPageOrClass = this.isPageOrClass(location);
       const resource = isPageOrClass
-        ? new WeixinLikePage(constructorParam)
+        ? new WeixinLikeComponentOrPage(constructorParam)
         : new PlainJavaScript(constructorParam);
 
       this.addResource(location, resource);
@@ -152,7 +152,7 @@ class Transpiler {
         };
         const isPageOrClass = this.isPageOrClass(location);
         const scriptResource = isPageOrClass
-          ? new WeixinLikePage(resourceConfig)
+          ? new WeixinLikeComponentOrPage(resourceConfig)
           : new PlainJavaScript(resourceConfig);
 
         await scriptResource.process();

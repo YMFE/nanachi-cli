@@ -36,7 +36,7 @@ class JavaScript extends DuplexResource {
     this.transformations.push(transform);
   }
 
-  public appendAsyncProcess(process: Promise<void>) {
+  public appendAsyncProcess(process: Promise<any>) {
     this.asyncTransformationProcesses.push(process);
   }
 

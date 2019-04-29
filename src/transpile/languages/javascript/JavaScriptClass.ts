@@ -19,11 +19,11 @@ class JavaScriptClass extends JavaScript {
   protected renderMethod: t.ClassMethod | t.FunctionDeclaration;
   protected classIdentifier: t.Identifier;
   protected configObject: any = {};
+  protected superClass: t.Node | null;
 
   private classProperties: Array<[t.Node, t.Expression | null]> = [];
   private constructorParams: any[] = [];
   private classMethods: t.ClassMethod[] = [];
-  private superClass: t.Node | null;
   private classType: classType = classType.stateless;
 
   public async process() {
@@ -175,30 +175,6 @@ class JavaScriptClass extends JavaScript {
     };
   }
 
-  private visitorsOfRemoveUnnecessaryImport(): TraverseOptions {
-    return {
-      ImportDeclaration: importPath => {
-        const { specifiers } = importPath.node;
-
-        if (specifiers.length === 0) return;
-        if (specifiers.length > 1) return;
-
-        const [specifier] = specifiers;
-
-        if (t.isImportDefaultSpecifier(specifier)) {
-          const { local } = specifier;
-
-          if (local.name === 'React') return;
-          if (local.name === 'regeneratorRuntime') return;
-
-          if (!t.isIdentifier(this.superClass)) {
-            importPath.remove();
-          }
-        }
-      }
-    };
-  }
-
   private visitorsOfTransformIfNodeIsComponent(): TraverseOptions {
     return {
       JSXElement: path => {
@@ -287,7 +263,6 @@ class JavaScriptClass extends JavaScript {
     const visitors = {
       ...this.visitorsOfCollectPropertyAndMethods(),
       ...this.visitorsOfRemoveJSXEmptyExpression(),
-      ...this.visitorsOfRemoveUnnecessaryImport(),
       ...this.visitorsOfTransformIfNodeIsComponent()
     };
 

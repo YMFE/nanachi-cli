@@ -6,7 +6,7 @@ import fs from 'fs-extra';
 import JavaScriptClass from './JavaScriptClass';
 
 class JavaScriptApp extends JavaScriptClass {
-  private imports: t.StringLiteral[] = [];
+  private imports: string[] = [];
 
   public async process() {
     await this.checkAppValid();
@@ -53,9 +53,7 @@ class JavaScriptApp extends JavaScriptClass {
   }
 
   private async processResources() {
-    const resourceProcessesPromise = this.imports.map(async node => {
-      const id = node.value;
-
+    const resourceProcessesPromise = this.imports.map(async id => {
       try {
         const { location } = await this.resolveResourceLocation(id);
         const resource = this.transpiler.spawnResource(location);
@@ -71,20 +69,18 @@ class JavaScriptApp extends JavaScriptClass {
   }
 
   private get pages() {
-    return this.imports.filter(({ value }) => /^(\.\/)?pages/.test(value));
+    return this.imports.filter(id => /^(\.\/)?pages/.test(id));
   }
 
   private injectPages() {
-    const pagesPaths = this.pages.map(({ value }) =>
-      value.replace(/^(\.\/)?/, '')
-    );
+    const pagesPaths = this.pages.map(id => id.replace(/^(\.\/)?/, ''));
     this.configObject.pages = pagesPaths;
   }
 
   private registerTransformApp() {
     this.transform({
       ImportDeclaration: path => {
-        this.imports.push(path.get('source').node);
+        this.imports.push(path.get('source').node.value);
         path.remove();
       }
     });

@@ -1,6 +1,7 @@
 // tslint:disable no-var-requires
 import SourceCodeResource from '@resources/SourceCodeResource';
 import postcss from 'postcss';
+import { ResourceState } from '@resources/Resource';
 const scss = require('postcss-scss');
 const scssPlugin = require('@csstools/postcss-sass');
 const postcssImport = require('postcss-import');
@@ -26,6 +27,7 @@ class Style extends SourceCodeResource {
 
     this.utf8Content = result.css.toString();
     this.destExt = '.wxss';
+    this.state = ResourceState.Emit;
   }
 
   private register() {

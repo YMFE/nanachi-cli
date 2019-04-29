@@ -1,7 +1,7 @@
 import { NodePath, TraverseOptions } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
-import DuplexResource from '@resources/DuplexResource';
+import BinaryResource from '@resources/BinaryResource';
 import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
@@ -9,8 +9,11 @@ import uid from '@shared/uid';
 import { relative } from 'path';
 import nodeNameMap from './nodeNameMap';
 import Template from './Template';
+import Style from '@languages/style/Style';
 
-class WeixinLikePage extends JavaScriptClass {
+class WeixinLikeComponentOrPage extends JavaScriptClass {
+  private imports: string[] = [];
+
   public async process() {
     await super.process();
     this.transformConfigToObject();
@@ -41,8 +44,9 @@ class WeixinLikePage extends JavaScriptClass {
 
   private appendWeixinLikeTransformations() {
     this.appendTransformation(this.registerNativeAndRemoveImports);
+    this.appendTransformation(this.processResources);
     this.appendTransformation(this.replaceNavigationBarTextStyle);
-    this.appendTransformation(this.injectReactLibrary);
+    // this.appendTransformation(this.injectReactLibrary);
     this.appendTransformation(this.transformStateJSXToReact);
     this.appendTransformation(this.replaceClassDeclaration);
   }
@@ -55,8 +59,8 @@ class WeixinLikePage extends JavaScriptClass {
   private registerNativeAndRemoveImports() {
     const visitors = {
       ...this.registerExport(),
-      ...this.visitorsOfRegisterRemoveImports(),
-      ...this.visitorsOfRegisterAttrName()
+      ...this.visitorsOfRegisterAttrName(),
+      ...this.visitorsOfRemoveUnnecessaryImport()
     };
 
     this.transform(visitors);
@@ -82,17 +86,42 @@ class WeixinLikePage extends JavaScriptClass {
     }
   }
 
-  private visitorsOfRegisterRemoveImports(): TraverseOptions {
+  private visitorsOfRemoveUnnecessaryImport(): TraverseOptions {
     return {
-      ImportDeclaration: path => {
-        const id = path.node.source.value;
+      ImportDeclaration: importPath => {
+        const id = importPath.node.source.value;
+        const { specifiers } = importPath.node;
 
-        if (id.endsWith('.scss')) {
-          path.remove();
-        }
+        this.imports.push(id);
 
         if (id === '@react') {
-          path.remove();
+          return importPath.remove();
+        }
+
+        if (id === 'regenerator-runtime/runtime.js') {
+          return importPath.remove();
+        }
+
+        if (id.endsWith('.scss')) {
+          return importPath.remove();
+        }
+
+        if (specifiers.length === 0) return;
+        if (specifiers.length > 1) return;
+
+        const [specifier] = specifiers;
+
+        if (t.isImportDefaultSpecifier(specifier)) {
+          const { local } = specifier;
+
+          if (
+            t.isIdentifier(this.superClass) &&
+            local.name === this.superClass.name
+          ) {
+            return;
+          }
+
+          importPath.remove();
         }
       }
     };
@@ -139,6 +168,26 @@ class WeixinLikePage extends JavaScriptClass {
         );
       }
     };
+  }
+
+  private processResources() {
+    const resourceProcesses = this.imports.map(async id => {
+      if (id === '@react') {
+        this.injectReactLibrary();
+      }
+
+      if (id.endsWith('.scss')) {
+        const { location } = await this.transpiler.resolve(id, this.dir);
+        const style = new Style({
+          rawPath: location,
+          transpiler: this.transpiler
+        });
+        this.transpiler.addResource(location, style);
+        await style.process();
+      }
+    });
+
+    this.appendAsyncProcess(Promise.all(resourceProcesses));
   }
 
   private deriveClassTemplate() {
@@ -238,18 +287,18 @@ class WeixinLikePage extends JavaScriptClass {
           if (/^https?:\/\//.test(attributeValue.value)) {
             // console.log('remote: ', attributeValue.value);
           } else {
-            const id = attributeValue.value;
-            const { location } = this.transpiler.resolveSync(id, this.dir);
-            const imageResource = new DuplexResource({
-              rawPath: location,
-              transpiler: this.transpiler,
-              encoding: null
-            });
-            imageResource.readSync();
-            imageResource.writeSync();
-            this.transpiler.addResource(location, imageResource);
-
-            attributeValue.value = this.relativeOfSourceDirTo(location);
+            const copy = async () => {
+              const id = attributeValue.value;
+              const { location } = await this.transpiler.resolve(id, this.dir);
+              const imageResource = new BinaryResource({
+                rawPath: location,
+                transpiler: this.transpiler
+              });
+              this.transpiler.addResource(location, imageResource);
+              await imageResource.process();
+              attributeValue.value = this.relativeOfSourceDirTo(location);
+            };
+            this.appendAsyncProcess(copy());
           }
         }
       }
@@ -344,13 +393,12 @@ class WeixinLikePage extends JavaScriptClass {
             mappedOpeningNodeName
           );
         }
-        // this.transformIfNodeIsComponent(path);
+        this.transformIfNodeIsComponent(path);
       }
     };
   }
 
   private transformIfNodeIsComponent(path: NodePath<t.JSXElement>) {
-    // debugger;
     const {
       node: {
         openingElement,
@@ -424,4 +472,4 @@ class WeixinLikePage extends JavaScriptClass {
   }
 }
 
-export default WeixinLikePage;
+export default WeixinLikeComponentOrPage;
