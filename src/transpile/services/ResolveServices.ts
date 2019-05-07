@@ -23,19 +23,18 @@ class ResolveServices {
 
   constructor(alias: InterfaceAlias = {}, transpiler: Transpiler) {
     this.resolve = this.resolve.bind(this);
-    this.resolveSync = this.resolveSync.bind(this);
     this.transpiler = transpiler;
     this.initAlias(alias);
-    this.prepareRegeneratorRuntime();
   }
 
   public async resolve(id: string, base?: string) {
-    const hit = this.searchCache(id, base);
+    const normalizedId = id.startsWith('/') ? `.${id}` : id;
+    const hit = this.searchCache(normalizedId, base);
 
     if (hit) return hit;
 
     try {
-      return await this.innerResolve(id, base);
+      return await this.resolveImplement(normalizedId, base);
     } catch (e) {
       // 默认解析失败用别名重试
     }
@@ -49,54 +48,25 @@ class ResolveServices {
         this.searchCache(maybeAlias, base)!.location
       );
 
-      return this.innerResolve(replacementId, base);
+      return this.resolveImplement(replacementId, base);
     }
 
     throw new Error(`Cannot resolve ${id} in ${base}`);
   }
 
-  public resolveSync(id: string, base: string) {
-    const hit = this.searchCache(id, base);
-
-    if (hit) return hit;
-
-    const resolvedId = this.resolveAlias(id, base);
-
-    return this.innerResolveSync(resolvedId, base);
+  public async init() {
+    await this.prepareRegeneratorRuntime();
   }
 
-  private prepareRegeneratorRuntime() {
+  private async prepareRegeneratorRuntime() {
     const id = 'regenerator-runtime/runtime.js';
-    this.resolveSync(
+    await this.resolve(
       'regenerator-runtime/runtime.js',
       this.transpiler.transpilerRoot
     );
 
     this.aliasKeys.push(id);
     this.caches.find(cache => cache.id === id)!.type = 'alias';
-  }
-
-  private resolveAlias(id: string, base: string) {
-    const maybeAlias = this.aliasKeys.find(key => id.startsWith(key));
-
-    if (maybeAlias) {
-      const replacementRegex = new RegExp(`^${maybeAlias}`);
-      const replacementId = id.replace(
-        replacementRegex,
-        this.searchCache(maybeAlias, base)!.location
-      );
-
-      return replacementId;
-    }
-
-    return id;
-  }
-
-  private innerResolveSync(id: string, base: string) {
-    const location = resolve.sync(id, { basedir: base });
-    const result = this.buildResolveResult(id, location, 'resolve', base);
-    this.caches.push(result);
-    return result;
   }
 
   private buildResolveResult(
@@ -115,7 +85,7 @@ class ResolveServices {
     return resolveResult;
   }
 
-  private async innerResolve(
+  private async resolveImplement(
     id: string,
     base?: string
   ): Promise<InterfaceResolveCache> {

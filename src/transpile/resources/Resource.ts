@@ -31,6 +31,14 @@ class Resource {
     this.transpiler = transpiler;
   }
 
+  public get resolve() {
+    return this.transpiler.resolve;
+  }
+
+  public get platform() {
+    return this.transpiler.platform;
+  }
+
   public get utf8Content() {
     return this.resourceBuffer.toString('utf8');
   }

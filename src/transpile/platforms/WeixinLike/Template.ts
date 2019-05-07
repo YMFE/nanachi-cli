@@ -5,6 +5,8 @@ import DerivedJavaScriptTraversable from '@resources/DerivedJavaScriptTraversabl
 import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
+import * as transform from '@shared/transform';
+import { Platforms } from '@transpiler/Transpiler';
 import blockElements from './blockElements';
 import builtInElements from './builtInElements';
 import inlineElements from './inlineElements';
@@ -16,7 +18,10 @@ interface ITemplate extends IDerivedResource {
 }
 
 class Template extends DerivedJavaScriptTraversable {
-  public renderMethod: t.ClassMethod | t.FunctionDeclaration | t.FunctionExpression;
+  public renderMethod:
+    | t.ClassMethod
+    | t.FunctionDeclaration
+    | t.FunctionExpression;
 
   private usingComponents: string[] = [];
   private configObject: any = null;
@@ -85,16 +90,10 @@ class Template extends DerivedJavaScriptTraversable {
         const { node } = path;
 
         path.replaceWithMultiple(
-          this.transformConditionalExpression(
-            this.transformIfStatementToConditionalExpression(node)
+          transform.transformConditionalExpression(
+            this.transformIfStatementToConditionalExpression(node),
+            this.platform
           )
-        );
-      },
-      LogicalExpression: path => {
-        const { node } = path;
-
-        path.replaceWith(
-          this.transformLogicalExpressionToConditionalExpression(node)
         );
       }
     });
@@ -201,10 +200,6 @@ class Template extends DerivedJavaScriptTraversable {
     template.parentPath.replaceWith(t.stringLiteral(codeStr));
   }
 
-  private replaceThis(str: string) {
-    return str.replace(/^this./, '');
-  }
-
   private transformStyle(path: NodePath<t.JSXAttribute>) {
     const { node } = path.get('value');
     const call = (node as t.JSXExpressionContainer).expression;
@@ -247,12 +242,18 @@ class Template extends DerivedJavaScriptTraversable {
           break;
 
         case /^catch[A-Z]/.test(node.name):
-          node.name = `catch${node.name.slice(5).toLocaleLowerCase()}`;
+          node.name =
+            this.platform === Platforms.ali
+              ? node.name
+              : `catch${node.name.slice(5).toLocaleLowerCase()}`;
           path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
           break;
 
         case /^on[A-Z]/.test(node.name):
-          node.name = `bind${node.name.slice(2).toLocaleLowerCase()}`;
+          node.name =
+            this.platform === Platforms.ali
+              ? node.name
+              : `bind${node.name.slice(2).toLocaleLowerCase()}`;
           path.get('value').replaceWith(t.stringLiteral('dispatchEvent'));
 
         default:
@@ -279,7 +280,9 @@ class Template extends DerivedJavaScriptTraversable {
           path
             .get('value')
             .replaceWith(
-              t.stringLiteral(`{{${this.replaceThis(generate(expression!))}}}`)
+              t.stringLiteral(
+                `{{${transform.replaceThis(generate(expression!))}}}`
+              )
             );
 
           break;
@@ -289,9 +292,9 @@ class Template extends DerivedJavaScriptTraversable {
             .get('value')
             .replaceWith(
               t.stringLiteral(
-                `{{${this.transformOrdinaryBinaryExpression(
+                this.transformJSXAttributeBinaryExpression(
                   expression as t.BinaryExpression
-                )}}}`
+                )
               )
             );
           break;
@@ -309,27 +312,65 @@ class Template extends DerivedJavaScriptTraversable {
     }
   }
 
-  private transformOrdinaryBinaryExpression(binary: t.BinaryExpression) {
+  private transformJSXAttributeBinaryExpression(binary: t.BinaryExpression) {
+    const { left, right } = binary;
+    let leftCode: string;
+    let rightCode: string;
+
+    if (t.isBinaryExpression(left)) {
+      leftCode = this.transformJSXAttributeBinaryExpression(left);
+    } else {
+      if (t.isStringLiteral(left)) {
+        leftCode = `${left.value}`;
+      } else {
+        leftCode = `{{${transform.replaceThis(generate(left))}}}`;
+      }
+    }
+
+    if (t.isBinaryExpression(right)) {
+      rightCode = this.transformJSXAttributeBinaryExpression(right);
+    } else {
+      if (t.isStringLiteral(right)) {
+        rightCode = `${right.value}`;
+      } else {
+        rightCode = `{{${transform.replaceThis(generate(right))}}}`;
+      }
+    }
+
+    return leftCode + rightCode;
+  }
+
+  private transformJSXElementBinaryExpression(binary: t.BinaryExpression) {
     const { operator, left, right } = binary;
     let leftCode: string;
     let rightCode: string;
 
     if (t.isBinaryExpression(left)) {
-      leftCode = this.transformOrdinaryBinaryExpression(left);
+      leftCode = this.transformJSXElementBinaryExpression(left);
     } else {
       if (t.isStringLiteral(left)) {
         leftCode = `'${left.value}'`;
       } else {
-        leftCode = this.replaceThis(generate(left));
+        leftCode = transform.replaceThis(generate(left));
       }
     }
 
-    rightCode = this.replaceThis(generate(right));
+    rightCode = transform.replaceThis(generate(right));
 
     return leftCode + operator + rightCode;
   }
 
+  private replaceMapCallWithJSX(path: NodePath<t.JSXElement>) {
+    path.traverse({
+      CallExpression: callPath => {
+        this.replaceMapCall(callPath);
+      }
+    });
+  }
+
   private replaceJSXElementChildren(path: NodePath<t.JSXElement>) {
+    this.replaceMapCallWithJSX(path);
+
     const children = path.get('children');
 
     children.forEach(element => {
@@ -341,20 +382,24 @@ class Template extends DerivedJavaScriptTraversable {
         switch (true) {
           case t.isStringLiteral(expression):
             element.replaceWith(expression);
+
             break;
 
           case t.isBooleanLiteral(expression):
             element.replaceWith(t.jsxText(''));
+
             break;
 
           case t.isIdentifier(expression):
             element.replaceWith(
-              t.jsxText(`{{${this.replaceThis(generate(expression))}}}`)
+              t.jsxText(`{{${transform.replaceThis(generate(expression))}}}`)
             );
+
             break;
 
           case t.isMemberExpression(expression):
             const { object, property } = expression as t.MemberExpression;
+
             if (
               t.isIdentifier(object, { name: 'props' }) &&
               t.isIdentifier(property, { name: 'children' })
@@ -369,34 +414,43 @@ class Template extends DerivedJavaScriptTraversable {
               );
             } else {
               element.replaceWith(
-                t.jsxText(`{{${this.replaceThis(generate(expression))}}}`)
+                t.jsxText(`{{${transform.replaceThis(generate(expression))}}}`)
               );
             }
 
             break;
 
-          case t.isCallExpression(expression):
-            this.replaceMapCall(element.get('expression') as NodePath<
-              t.CallExpression
-            >);
-            break;
-
           case t.isConditionalExpression(expression):
             element.replaceWithMultiple(
-              this.transformConditionalExpression(
-                expression as t.ConditionalExpression
+              transform.transformConditionalExpression(
+                expression as t.ConditionalExpression,
+                this.platform
               )
             );
+
             break;
 
           case t.isBinaryExpression(expression):
             element.replaceWith(
               t.jsxText(
-                `{{${this.transformOrdinaryBinaryExpression(
+                `{{${this.transformJSXElementBinaryExpression(
                   expression as t.BinaryExpression
                 )}}}`
               )
             );
+
+            break;
+
+          case t.isLogicalExpression(expression):
+            // const {} =
+            const { platform } = this.transpiler;
+            const replacement = transform.logicalExpressionToTemplate(
+              expression as t.LogicalExpression,
+              platformSpecificFragments[platform].ifAttributeName(),
+              this.platform
+            );
+            element.replaceWith(replacement);
+
             break;
 
           default:
@@ -409,7 +463,7 @@ class Template extends DerivedJavaScriptTraversable {
   private replaceMapCall(call: NodePath<t.CallExpression>) {
     // 移除末尾的 .map
     const calleeString = generate(call.node.callee).slice(0, -4);
-    const calleeStringWithoutThis = this.replaceThis(calleeString);
+    const calleeStringWithoutThis = transform.replaceThis(calleeString);
     const [functionNode] = call.node.arguments;
 
     if (t.isFunctionExpression(functionNode)) {
@@ -460,8 +514,9 @@ class Template extends DerivedJavaScriptTraversable {
         t.jsxElement(
           t.jsxOpeningElement(t.jsxIdentifier('block'), attributes),
           t.jsxClosingElement(t.jsxIdentifier('block')),
-          this.normalizeJSXElementChildren(
-            returnStatement as t.Node[]
+          transform.normalizeJSXElementChildren(
+            returnStatement as t.Node[],
+            this.platform
           ) as t.JSXElement[],
           false
         )
@@ -482,7 +537,9 @@ class Template extends DerivedJavaScriptTraversable {
           return [this.transformIfStatementToConditionalExpression(node)];
         }
         if (t.isLogicalExpression(node)) {
-          return [this.transformLogicalExpressionToConditionalExpression(node)];
+          return [
+            transform.transformLogicalExpressionToConditionalExpression(node)
+          ];
         }
 
         this.state = ResourceState.Error;
@@ -498,33 +555,20 @@ class Template extends DerivedJavaScriptTraversable {
     }
   }
 
-  private transformLogicalExpressionToConditionalExpression(
-    node: t.LogicalExpression
-  ) {
-    return t.conditionalExpression(node.left, node.right, t.nullLiteral());
-  }
-
-  private transformIfStatementToConditionalExpression(node: t.IfStatement) {
+  private transformIfStatementToConditionalExpression(
+    node: t.IfStatement
+  ): t.ConditionalExpression {
     const { test, consequent, alternate } = node;
 
     return t.conditionalExpression(
       test,
-      this.transformConsequent(consequent) as t.Expression,
-      this.transformConsequent(alternate) as t.Expression
+      t.isIfStatement(consequent)
+        ? this.transformIfStatementToConditionalExpression(consequent)
+        : (this.transformConsequent(consequent) as t.Expression),
+      t.isIfStatement(alternate)
+        ? this.transformIfStatementToConditionalExpression(alternate)
+        : (this.transformConsequent(alternate) as t.Expression)
     );
-  }
-
-  private reportInvalidConsequent(consequent: t.BlockStatement) {
-    this.state = ResourceState.Error;
-    this.error = new Error(
-      'IfStatement in render method must contain and only ' +
-        'contain one ReturnStatement, got ' +
-        consequent.body.length +
-        ' Statements.'
-    );
-    reportError(this);
-
-    return t.nullLiteral();
   }
 
   private transformConsequent(consequent: t.Node | null) {
@@ -547,72 +591,17 @@ class Template extends DerivedJavaScriptTraversable {
     }
   }
 
-  private normalizeJSXElementChildren(children: t.Node[]) {
-    return children.map(child => {
-      if (t.isStringLiteral(child)) {
-        return t.jsxText(child.value);
-      }
-      if (t.isConditionalExpression(child)) {
-        return this.transformConditionalExpression(child)[0];
-      }
-      return child;
-    });
-  }
+  private reportInvalidConsequent(consequent: t.BlockStatement) {
+    this.state = ResourceState.Error;
+    this.error = new Error(
+      'IfStatement in render method must contain and only ' +
+        'contain one ReturnStatement, got ' +
+        consequent.body.length +
+        ' Statements.'
+    );
+    reportError(this);
 
-  private transformConditionalExpression(
-    conditional: t.ConditionalExpression
-  ): t.JSXElement[] {
-    const { test, consequent, alternate } = conditional;
-    const testString = this.replaceThis(generate(test));
-    const consequentReplacement = t.isConditionalExpression(consequent)
-      ? this.transformConditionalExpression(consequent)
-      : [consequent];
-    const alternateReplacement = t.isConditionalExpression(alternate)
-      ? this.transformConditionalExpression(alternate)
-      : [alternate];
-
-    const replacement = [
-      t.jsxElement(
-        t.jsxOpeningElement(t.jsxIdentifier('block'), [
-          t.jsxAttribute(
-            t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('if')),
-            t.stringLiteral(`{{${testString}}}`)
-          )
-        ]),
-        t.jsxClosingElement(t.jsxIdentifier('block')),
-        this.normalizeJSXElementChildren(
-          t.isConditionalExpression(consequentReplacement)
-            ? this.transformConditionalExpression(consequentReplacement)
-            : consequentReplacement
-        ) as t.JSXElement[],
-        false
-      )
-    ];
-
-    if (!t.isNullLiteral(alternate)) {
-      const alternateJSX = t.isStringLiteral(alternate)
-        ? [t.jsxText(alternate.value)]
-        : alternateReplacement;
-
-      replacement.push(
-        t.jsxElement(
-          t.jsxOpeningElement(t.jsxIdentifier('block'), [
-            t.jsxAttribute(
-              t.jsxNamespacedName(
-                t.jsxIdentifier('wx'),
-                t.jsxIdentifier('elif')
-              ),
-              t.stringLiteral('true')
-            )
-          ]),
-          t.jsxClosingElement(t.jsxIdentifier('block')),
-          this.normalizeJSXElementChildren(alternateJSX) as t.JSXElement[],
-          false
-        )
-      );
-    }
-
-    return replacement;
+    return t.nullLiteral();
   }
 }
 

@@ -1,6 +1,6 @@
-import generate from '@babel/generator';
 import traverse, { TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
+import generate from '@shared/generate';
 import DerivedCodeResource, { IDerivedResource } from './DerivedCodeResource';
 import SourceCodeResource from './SourceCodeResource';
 
@@ -25,8 +25,7 @@ class DerivedJavaScriptTraversable extends DerivedCodeResource {
   }
 
   public generate() {
-    const { code } = generate(this.ast);
-    this.utf8Content = code;
+    this.utf8Content = generate(this.ast);
   }
 }
 

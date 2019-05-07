@@ -1,11 +1,11 @@
 import { transformFromAstSync } from '@babel/core';
-import traverse, { NodePath, TraverseOptions } from '@babel/traverse';
+import { NodePath, TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
 import DuplexResource from '@resources/DuplexResource';
 import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
 import reportError from '@shared/reportError';
-import { transformArrowFunctionToBindFunction } from '@shared/transform';
+import { arrowFunctionToBindFunction } from '@shared/transform';
 import uid from '@shared/uid';
 import { relative } from 'path';
 import JavaScript from './JavaScript';
@@ -46,7 +46,7 @@ class JavaScriptClass extends JavaScript {
       if (t.isObjectExpression(property)) {
         this.configObject = {
           ...this.configObject,
-          ...this.evalObjectSourceCode(generate(property))
+          ...this.colorCoercion(this.evalObjectSourceCode(generate(property)))
         };
       }
     }
@@ -66,7 +66,7 @@ class JavaScriptClass extends JavaScript {
 
   protected injectReactLibrary() {
     const inject = async () => {
-      const { location } = await this.transpiler.resolve('@react');
+      const { location } = await this.resolve('@react');
       const reactResource = this.transpiler.resources.get(location);
       const destLocation = reactResource!.destPath;
       const relativeReactLibraryPath = relative(this.destDir, destLocation);
@@ -93,7 +93,11 @@ class JavaScriptClass extends JavaScript {
             name: 'render'
           })
         ) {
-          this.transformArrayMap(path);
+          this.transformReact(path);
+        }
+      },
+      FunctionDeclaration: path => {
+        if (this.classType === classType.stateless) {
           this.transformReact(path);
         }
       }
@@ -116,10 +120,71 @@ class JavaScriptClass extends JavaScript {
     });
   }
 
+  protected transformMapCall() {
+    this.transform({
+      ClassMethod: path => {
+        if (
+          path.get('key').isIdentifier({
+            name: 'render'
+          })
+        ) {
+          this.transformArrayMap(path);
+        }
+      },
+      FunctionDeclaration: path => {
+        const { id } = path.node;
+
+        if (t.isIdentifier(id)) {
+          if (this.classIdentifier.name === id.name) {
+            this.transformArrayMap(path);
+          }
+        }
+      }
+    });
+  }
+
   public get configProperty() {
     return this.classProperties
       .filter(([key]) => t.isIdentifier(key, { name: 'config' }))
       .shift();
+  }
+
+  private colorCoercion(config: any): any {
+    if (config.window) {
+      return { ...config, window: this.colorCoercion(config.window) };
+    }
+
+    const objContainsTheKeyAndValueIsOneOf = (
+      obj: any,
+      key: string,
+      values: string[]
+    ) => values.some(v => obj[key] === v);
+
+    const NAVIGATION_BAR_TEXT_KEY = 'navigationBarTextStyle';
+    const BACKGROUND_TEXT_STYLE_KEY = 'backgroundTextStyle';
+    const lightValues = ['#fff', '#ffffff', 'white'];
+
+    if (config[NAVIGATION_BAR_TEXT_KEY]) {
+      config[NAVIGATION_BAR_TEXT_KEY] = objContainsTheKeyAndValueIsOneOf(
+        config,
+        NAVIGATION_BAR_TEXT_KEY,
+        lightValues
+      )
+        ? 'white'
+        : 'black';
+    }
+
+    if (config[BACKGROUND_TEXT_STYLE_KEY]) {
+      config[BACKGROUND_TEXT_STYLE_KEY] = objContainsTheKeyAndValueIsOneOf(
+        config,
+        BACKGROUND_TEXT_STYLE_KEY,
+        [...lightValues, 'light']
+      )
+        ? 'light'
+        : 'dark';
+    }
+
+    return config;
   }
 
   private buildPageConstructor() {
@@ -151,6 +216,7 @@ class JavaScriptClass extends JavaScript {
           const regexStartsWithCapitalizedLetter = /^[A-Z]/;
 
           if (regexStartsWithCapitalizedLetter.test(name)) {
+            this.classIdentifier = t.identifier(name);
             this.transformArrayMap(path);
           }
         }
@@ -173,70 +239,6 @@ class JavaScriptClass extends JavaScript {
         path.findParent(t.isJSXExpressionContainer).remove();
       }
     };
-  }
-
-  private visitorsOfTransformIfNodeIsComponent(): TraverseOptions {
-    return {
-      JSXElement: path => {
-        this.transformIfNodeIsComponent1(path);
-      }
-    };
-  }
-
-  private transformIfNodeIsComponent1(path: NodePath<t.JSXElement>) {
-    const {
-      node: {
-        openingElement,
-        openingElement: { attributes },
-        closingElement
-      }
-    } = path;
-
-    if (t.isJSXOpeningElement(openingElement)) {
-      if (t.isJSXIdentifier(openingElement.name)) {
-        const rawName = openingElement.name.name;
-
-        if (/^[A-Z]/.test(rawName)) {
-          const useComponentNode = t.jsxMemberExpression(
-            t.jsxIdentifier('React'),
-            t.jsxIdentifier('useComponent')
-          );
-
-          openingElement.name = useComponentNode;
-
-          if (closingElement) {
-            closingElement.name = useComponentNode;
-          }
-
-          const callback = path.findParent(t.isCallExpression);
-          let instanceUidValue: t.Node;
-
-          if (callback) {
-            const { params } = (callback as any).node.arguments[0];
-            const [, indexNode] = params;
-
-            instanceUidValue = t.binaryExpression(
-              '+',
-              t.stringLiteral(uid.next()),
-              t.identifier(indexNode.name)
-            );
-          } else {
-            instanceUidValue = t.stringLiteral(uid.next());
-          }
-
-          attributes.push(
-            t.jsxAttribute(
-              t.jsxIdentifier('data-instance-uid'),
-              t.jsxExpressionContainer(instanceUidValue)
-            )
-          );
-
-          attributes.push(
-            t.jsxAttribute(t.jsxIdentifier('is'), t.stringLiteral(rawName))
-          );
-        }
-      }
-    }
   }
 
   private visitorsOfCollectPropertyAndMethods(): TraverseOptions {
@@ -262,8 +264,7 @@ class JavaScriptClass extends JavaScript {
   private collectAndClean() {
     const visitors = {
       ...this.visitorsOfCollectPropertyAndMethods(),
-      ...this.visitorsOfRemoveJSXEmptyExpression(),
-      ...this.visitorsOfTransformIfNodeIsComponent()
+      ...this.visitorsOfRemoveJSXEmptyExpression()
     };
 
     this.transform(visitors);
@@ -353,39 +354,6 @@ class JavaScriptClass extends JavaScript {
     return [];
   }
 
-  private addExternalResource(path: NodePath<t.ImportDeclaration>) {
-    const { value: id } = path.get('source').node;
-    const { location } = this.transpiler.resolveSync(id, this.dir)!;
-
-    switch (id) {
-      case 'regenerator-runtime/runtime.js':
-        const regeneratorLocation = this.transpiler.resources.get(location)!
-          .destPath;
-        path.get('source').node.value = relative(
-          this.destDir,
-          regeneratorLocation
-        );
-        break;
-
-      case '@react':
-        const reactLibraryLocation = this.transpiler.resources.get(location)!
-          .destPath;
-        path.get('source').node.value = relative(
-          this.destDir,
-          reactLibraryLocation
-        );
-        break;
-
-      default:
-        path.get('source').node.value = relative(this.dir, location);
-        break;
-    }
-
-    if (this.transpiler.resources.has(location)) return;
-
-    this.transpiler.processResource(id, location);
-  }
-
   private replaceDataIdInMapCall(
     path: NodePath<t.CallExpression>,
     indexUid: string
@@ -440,6 +408,10 @@ class JavaScriptClass extends JavaScript {
       if (t.isFunctionExpression(mapCallback)) {
         const params = mapCallback.params;
 
+        if (params.length === 0) {
+          params.push(t.identifier(uid.next()));
+        }
+
         if (params.length < 2) {
           const indexUid = 'i_' + uid.next();
 
@@ -456,7 +428,7 @@ class JavaScriptClass extends JavaScript {
   private transformArrayMapArrowExpression(
     path: NodePath<t.ArrowFunctionExpression>
   ) {
-    path.replaceWith(transformArrowFunctionToBindFunction(path.node));
+    path.replaceWith(arrowFunctionToBindFunction(path.node));
 
     this.transformArrayMapCallExpression(path.findParent(
       t.isCallExpression

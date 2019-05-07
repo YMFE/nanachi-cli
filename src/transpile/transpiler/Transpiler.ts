@@ -21,7 +21,8 @@ export const enum Platforms {
   bu = 'bu',
   quick = 'quick',
   tt = 'tt',
-  ali = 'ali'
+  ali = 'ali',
+  web = 'web'
 }
 
 export interface ITranspiler {
@@ -176,15 +177,12 @@ class Transpiler {
     return this.resolveServices.resolve;
   }
 
-  public get resolveSync() {
-    return this.resolveServices.resolveSync;
-  }
-
   private get appEntryPath() {
     return path.resolve(this.projectRoot, sourceCodeDirName, appEntryFileName);
   }
 
   private async prepareRuntime() {
+    await this.resolveServices.init();
     const { location } = await this.resolve('@react');
     const resource = new BinaryResource({
       rawPath: location,
@@ -209,7 +207,7 @@ class Transpiler {
     resource.state = ResourceState.Emit;
     resource.destPath = path.resolve(
       this.projectDestDirectory,
-      'lib/runtime.js'
+      'lib/regenerator.js'
     );
     this.addResource(location, resource);
   }
@@ -221,9 +219,6 @@ class Transpiler {
     );
     const emitPool = changedResources.map(async resource => {
       try {
-        // if (resource instanceof JavaScript) {
-        //   resource.generate();
-        // }
         await resource.write();
       } catch (error) {
         resource.state = ResourceState.Error;

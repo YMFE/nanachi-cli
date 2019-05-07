@@ -1,5 +1,53 @@
 import t from '@babel/types';
 
+function wxIdentifier() {
+  return t.stringLiteral('wx');
+}
+
+function aliIdentifier() {
+  return t.stringLiteral('ali');
+}
+
+function buIdentifier() {
+  return t.stringLiteral('bu');
+}
+
+function wxIfAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('if'));
+}
+
+function aliIfAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('a'), t.jsxIdentifier('if'));
+}
+
+function buIfAttributeName() {
+  return t.jsxIdentifier('s-if');
+}
+
+function wxElseIfAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('elif'));
+}
+
+function aliElseIfAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('a'), t.jsxIdentifier('elif'));
+}
+
+function buElseIfAttributeName() {
+  return t.jsxIdentifier('s-elif');
+}
+
+function wxElseAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('else'));
+}
+
+function aliElseAttributeName() {
+  return t.jsxNamespacedName(t.jsxIdentifier('a'), t.jsxIdentifier('else'));
+}
+
+function buElseAttributeName() {
+  return t.jsxIdentifier('s-else');
+}
+
 function wxLoopForAttributeName() {
   return t.jsxNamespacedName(t.jsxIdentifier('wx'), t.jsxIdentifier('for'));
 }
@@ -63,6 +111,7 @@ function buLoopKeyAttribute() {
   return null;
 }
 
+type TypeIdentifier = () => t.StringLiteral;
 type TypeAttributeNameFragment = () => t.JSXNamespacedName | t.JSXIdentifier;
 type TypeAttributeFragment = () => t.JSXAttribute | null;
 
@@ -71,6 +120,10 @@ interface IPlatformFragment {
   loopAttributeItemName: TypeAttributeNameFragment;
   loopAttributeIndexName: TypeAttributeNameFragment;
   loopAttributeKey: TypeAttributeFragment;
+  ifAttributeName: TypeAttributeNameFragment;
+  elseIfAttributeName: TypeAttributeNameFragment;
+  elseAttributeName: TypeAttributeNameFragment;
+  id: TypeIdentifier;
 }
 
 interface IPlatformFragments {
@@ -82,19 +135,31 @@ const PlatformFragments: IPlatformFragments = {
     loopAttributeName: wxLoopForAttributeName,
     loopAttributeItemName: wxLoopForItemAttributeName,
     loopAttributeIndexName: wxLoopForIndexAttributeName,
-    loopAttributeKey: wxLoopKeyAttribute
+    loopAttributeKey: wxLoopKeyAttribute,
+    ifAttributeName: wxIfAttributeName,
+    elseIfAttributeName: wxElseIfAttributeName,
+    elseAttributeName: wxElseAttributeName,
+    id: wxIdentifier
   },
   ali: {
     loopAttributeName: aliLoopForAttributeName,
     loopAttributeItemName: aliLoopForItemAttributeName,
     loopAttributeIndexName: aliLoopForIndexAttributeName,
-    loopAttributeKey: aliLoopKeyAttribute
+    loopAttributeKey: aliLoopKeyAttribute,
+    ifAttributeName: aliIfAttributeName,
+    elseIfAttributeName: aliElseIfAttributeName,
+    elseAttributeName: aliElseAttributeName,
+    id: aliIdentifier
   },
   bu: {
     loopAttributeName: buLoopForAttributeName,
     loopAttributeItemName: buLoopForItemAttributeName,
     loopAttributeIndexName: buLoopForIndexAttributeName,
-    loopAttributeKey: buLoopKeyAttribute
+    loopAttributeKey: buLoopKeyAttribute,
+    ifAttributeName: buIfAttributeName,
+    elseIfAttributeName: buElseIfAttributeName,
+    elseAttributeName: buElseAttributeName,
+    id: buIdentifier
   }
 };
 

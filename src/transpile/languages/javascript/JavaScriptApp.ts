@@ -1,4 +1,4 @@
-import t from '@babel/types';
+import BinaryResource from '@resources/BinaryResource';
 import { ResourceState } from '@resources/Resource';
 import reportError from '@shared/reportError';
 import chalk from 'chalk';
@@ -16,6 +16,7 @@ class JavaScriptApp extends JavaScriptClass {
     await this.waitUntilAsyncProcessesCompleted();
     this.transformConfigToObject();
     this.deriveJSON();
+    await this.importTabResources();
     this.generate();
   }
 
@@ -28,6 +29,50 @@ class JavaScriptApp extends JavaScriptClass {
     this.appendTransformation(this.injectPages);
     this.appendTransformation(this.processResources);
     this.appendTransformation(this.injectReactLibrary);
+  }
+
+  private async importTabResources() {
+    const { tabBar } = this.configObject;
+    const list = tabBar[`${this.platform}List`] || tabBar.list || [];
+
+    if (tabBar) {
+      const iconPaths = list.reduce(
+        (paths: string[], page: any) => [...paths, page.iconPath],
+        []
+      );
+      const selectedIconPaths = list.reduce(
+        (paths: string[], page: any) => [...paths, page.selectedIconPath],
+        []
+      );
+      const allIcons = [...iconPaths, ...selectedIconPaths].map(
+        (id: string) => {
+          if (id.startsWith('/')) return `.${id}`;
+          if (!id.startsWith('.')) return `./${id}`;
+          return id;
+        }
+      );
+
+      const iconResources = allIcons.map(async iconPath => {
+        try {
+          const { location } = await this.resolve(
+            iconPath,
+            this.dir
+          );
+          const resource = new BinaryResource({
+            rawPath: location,
+            transpiler: this.transpiler
+          });
+          this.transpiler.addResource(location, resource);
+          return resource.process();
+        } catch (error) {
+          this.state = ResourceState.Error;
+          this.error = error;
+          reportError(this);
+        }
+      });
+
+      return Promise.all(iconResources);
+    }
   }
 
   private async checkAppValid() {
@@ -43,12 +88,12 @@ class JavaScriptApp extends JavaScriptClass {
 
   private async resolveResourceLocation(id: string) {
     try {
-      return await this.transpiler.resolve(
+      return await this.resolve(
         id,
         this.transpiler.projectSourceDirectory
       );
     } catch (error) {
-      return this.transpiler.resolve(id, this.transpiler.projectRoot);
+      return this.resolve(id, this.transpiler.projectRoot);
     }
   }
 
@@ -80,8 +125,16 @@ class JavaScriptApp extends JavaScriptClass {
   private registerTransformApp() {
     this.transform({
       ImportDeclaration: path => {
-        this.imports.push(path.get('source').node.value);
-        path.remove();
+        const id = path.get('source').node.value;
+        this.imports.push(id);
+        if (
+          id.includes('pages') ||
+          id.endsWith('.scss') ||
+          id.endsWith('.less') ||
+          id.endsWith('@react')
+        ) {
+          path.remove();
+        }
       }
     });
   }

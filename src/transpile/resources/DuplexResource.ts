@@ -28,36 +28,11 @@ class DuplexResource extends FileResource {
     }
   }
 
-  public readSync() {
-    try {
-      const buffer = fs.readFileSync(this.rawPath);
-
-      this.buffer = buffer;
-      this.state = ResourceState.Read;
-    } catch (e) {
-      this.state = ResourceState.Error;
-      this.error = e;
-    }
-  }
-
   public async write() {
     if (this.state === ResourceState.Emit) {
       try {
         await fs.outputFile(this.destPath, this.utf8Content);
         this.state = ResourceState.Emitted;
-      } catch (e) {
-        this.state = ResourceState.Error;
-        this.error = e;
-      }
-    }
-  }
-
-  public writeSync() {
-    if (this.emit) {
-      try {
-        this.emit = false;
-        fs.outputFileSync(this.destPath, this.utf8Content);
-        this.emitted = true;
       } catch (e) {
         this.state = ResourceState.Error;
         this.error = e;

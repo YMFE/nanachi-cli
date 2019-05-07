@@ -1,10 +1,12 @@
 import { transformFromAstSync } from '@babel/core';
-import generate from '@babel/generator';
 import { parse, ParserOptions } from '@babel/parser';
 import traverse, { TraverseOptions } from '@babel/traverse';
 import t from '@babel/types';
+import PlatformFragments from '@platforms/WeixinLike/platformSpecificFragments';
 import DuplexResource from '@resources/DuplexResource';
 import { ResourceState } from '@resources/Resource';
+import generate from '@shared/generate';
+import reportError from '@shared/reportError';
 
 type TypeAsyncTransformation = () => Promise<void>;
 type TypeSyncTransformation = () => void;
@@ -19,12 +21,6 @@ class JavaScript extends DuplexResource {
   private transformations: TypeTransformation[] = [];
   private asyncTransformationProcesses: Array<Promise<void>> = [];
 
-  public async prepare() {
-    await this.read();
-    this.initOptions();
-    this.parse();
-  }
-
   public async process() {
     await this.prepare();
     this.registerJavaScriptTransformations();
@@ -32,34 +28,51 @@ class JavaScript extends DuplexResource {
     await this.waitUntilAsyncProcessesCompleted();
   }
 
-  public appendTransformation(transform: TypeTransformation) {
-    this.transformations.push(transform);
-  }
-
-  public appendAsyncProcess(process: Promise<any>) {
-    this.asyncTransformationProcesses.push(process);
-  }
-
   public generate() {
-    const { code } = generate(this.ast);
-    this.utf8Content = code;
+    this.utf8Content = generate(this.ast);
     this.state = ResourceState.Emit;
   }
 
-  public transform(traverseOptions: TraverseOptions) {
-    traverse(this.ast, traverseOptions);
+  protected appendTransformation(transform: TypeTransformation) {
+    this.transformations.push(transform);
   }
 
-  public async waitUntilAsyncProcessesCompleted() {
-    await Promise.all(this.asyncTransformationProcesses);
+  protected appendAsyncProcess(process: Promise<any>) {
+    this.asyncTransformationProcesses.push(process);
+  }
+
+  protected async waitUntilAsyncProcessesCompleted() {
+    try {
+      await Promise.all(this.asyncTransformationProcesses);
+    } catch (error) {
+      this.state = ResourceState.Error;
+      this.error = error;
+      reportError(this);
+    }
     this.emptyAsyncProcesses();
   }
 
-  public async applyTransformations() {
+  protected async applyTransformations() {
     for (const transformation of this.transformations) {
       await transformation.call(this);
     }
     this.emptyTransformations();
+  }
+
+  protected transform(traverseOptions: TraverseOptions) {
+    traverse(this.ast, traverseOptions);
+  }
+
+  protected async prepare() {
+    await this.read();
+    this.initOptions();
+    this.parse();
+  }
+
+  private registerJavaScriptTransformations() {
+    this.appendTransformation(this.locateAsyncToGenerator);
+    this.appendTransformation(this.injectRegeneratorRuntimeWhenNeeded);
+    this.appendTransformation(this.replaceEnv);
   }
 
   private emptyAsyncProcesses() {
@@ -68,12 +81,6 @@ class JavaScript extends DuplexResource {
 
   private emptyTransformations() {
     this.transformations = [];
-  }
-
-  private registerJavaScriptTransformations() {
-    this.appendTransformation(this.locateAsyncToGenerator);
-    this.appendTransformation(this.injectRegeneratorRuntimeWhenNeeded);
-    this.appendTransformation(this.replaceEnv);
   }
 
   private replaceEnv() {
@@ -87,7 +94,9 @@ class JavaScript extends DuplexResource {
 
             if (t.isIdentifier(subProperty, { name: 'env' })) {
               if (t.isIdentifier(subObject, { name: 'process' })) {
-                path.replaceWith(t.stringLiteral('wx'));
+                path.replaceWith(
+                  PlatformFragments[this.platform].id()
+                );
               }
             }
           }

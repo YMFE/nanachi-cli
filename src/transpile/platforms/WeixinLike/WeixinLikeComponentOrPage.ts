@@ -1,6 +1,7 @@
 import { NodePath, TraverseOptions } from '@babel/traverse';
 import t, { JSXOpeningElement } from '@babel/types';
 import JavaScriptClass from '@languages/javascript/JavaScriptClass';
+import Style from '@languages/style/Style';
 import BinaryResource from '@resources/BinaryResource';
 import { ResourceState } from '@resources/Resource';
 import generate from '@shared/generate';
@@ -8,8 +9,8 @@ import reportError from '@shared/reportError';
 import uid from '@shared/uid';
 import { relative } from 'path';
 import nodeNameMap from './nodeNameMap';
+import platformExtensions from './platformSpecificExtensions';
 import Template from './Template';
-import Style from '@languages/style/Style';
 
 class WeixinLikeComponentOrPage extends JavaScriptClass {
   private imports: string[] = [];
@@ -45,8 +46,8 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
   private appendWeixinLikeTransformations() {
     this.appendTransformation(this.registerNativeAndRemoveImports);
     this.appendTransformation(this.processResources);
-    this.appendTransformation(this.replaceNavigationBarTextStyle);
-    // this.appendTransformation(this.injectReactLibrary);
+    this.appendTransformation(this.transformMapCall);
+    this.appendTransformation(this.transformComponentToReactUseComponent);
     this.appendTransformation(this.transformStateJSXToReact);
     this.appendTransformation(this.replaceClassDeclaration);
   }
@@ -66,26 +67,6 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
     this.transform(visitors);
   }
 
-  private replaceNavigationBarTextStyle() {
-    if (this.isComponent) return;
-
-    const NAVIGATION_BAR_TEXT_KEY = 'navigationBarTextStyle';
-
-    if (this.configObject[NAVIGATION_BAR_TEXT_KEY]) {
-      const color = this.configObject[NAVIGATION_BAR_TEXT_KEY];
-
-      if (color === '#fff') {
-        return (this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'white');
-      }
-
-      if (color === '#000') {
-        return (this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'black');
-      }
-
-      this.configObject[NAVIGATION_BAR_TEXT_KEY] = 'white';
-    }
-  }
-
   private visitorsOfRemoveUnnecessaryImport(): TraverseOptions {
     return {
       ImportDeclaration: importPath => {
@@ -98,31 +79,47 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
           return importPath.remove();
         }
 
-        if (id === 'regenerator-runtime/runtime.js') {
-          return importPath.remove();
-        }
-
         if (id.endsWith('.scss')) {
           return importPath.remove();
         }
 
-        if (specifiers.length === 0) return;
-        if (specifiers.length > 1) return;
-
-        const [specifier] = specifiers;
-
-        if (t.isImportDefaultSpecifier(specifier)) {
-          const { local } = specifier;
-
-          if (
-            t.isIdentifier(this.superClass) &&
-            local.name === this.superClass.name
-          ) {
-            return;
-          }
-
-          importPath.remove();
+        if (id.endsWith('.less')) {
+          return importPath.remove();
         }
+
+        if (specifiers.length === 1) {
+          const [specifier] = specifiers;
+
+          if (t.isImportDefaultSpecifier(specifier)) {
+            const { local } = specifier;
+
+            if (
+              t.isIdentifier(this.superClass) &&
+              local.name === this.superClass.name
+            ) {
+              return;
+            }
+          }
+        }
+
+        const delayRemove = async () => {
+          const { location } = await this.resolve(id, this.dir);
+          const { location: componentsDir } = await this.resolve(
+            '@components'
+          );
+          if (location.startsWith(componentsDir)) {
+            importPath.remove();
+          } else {
+            const resource = this.transpiler.spawnResource(location);
+
+            if (resource.state !== ResourceState.Emit) await resource.process();
+
+            importPath.node.source.value = this.relativeOfDestDirTo(
+              resource.destPath
+            );
+          }
+        };
+        this.appendAsyncProcess(delayRemove());
       }
     };
   }
@@ -173,18 +170,27 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
   private processResources() {
     const resourceProcesses = this.imports.map(async id => {
       if (id === '@react') {
-        this.injectReactLibrary();
+        return this.injectReactLibrary();
       }
 
       if (id.endsWith('.scss')) {
-        const { location } = await this.transpiler.resolve(id, this.dir);
+        const { location } = await this.resolve(id, this.dir);
         const style = new Style({
           rawPath: location,
           transpiler: this.transpiler
         });
         this.transpiler.addResource(location, style);
-        await style.process();
+        return style.process();
       }
+
+      const { location: componentLocation } = await this.resolve(
+        id,
+        this.dir
+      );
+
+      if (this.transpiler.resources.get(componentLocation)) return;
+      const javascript = this.transpiler.spawnResource(componentLocation);
+      await javascript.process();
     });
 
     this.appendAsyncProcess(Promise.all(resourceProcesses));
@@ -198,7 +204,9 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
     const template = new Template({
       renderMethod: this.renderMethod,
       creator: this,
-      rawPath: this.pathWithoutExt + '.wxml',
+      rawPath:
+        this.pathWithoutExt +
+        platformExtensions[this.platform].template,
       transpiler: this.transpiler,
       configObject: this.configObject
     });
@@ -216,6 +224,8 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
     const openingElement = path.findParent(t.isJSXOpeningElement)
       .node as JSXOpeningElement;
     const { name, attributes } = openingElement;
+    const { platform } = this.transpiler;
+    const nodeName = (name as t.JSXIdentifier).name;
     const eventAttribute = attributes.find(attribute => {
       if (t.isJSXAttribute(attribute)) {
         const { name: attributeName } = attribute;
@@ -230,13 +240,36 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
       return false;
     });
 
-    if (eventName === 'Click') eventName = 'Tap';
+    switch (eventName) {
+      case 'Click':
+      case 'Tap':
+        eventName =
+          platform === 'quick' || platform === 'web' ? 'Click' : 'Tap';
 
-    if (t.isJSXIdentifier(name)) {
-      const nodeName = name.name;
-      if (nodeName === 'input' || nodeName === 'textarea') {
-        eventName = 'Input';
-      }
+        break;
+
+      case 'ScrollToLower':
+        if (eventName === 'ScrollToLower') {
+          eventName = 'ScrollBottom';
+        }
+        break;
+
+      case 'ScrollToUpper':
+        if (eventName === 'ScrollToUpper') {
+          eventName = 'ScrollTop';
+        }
+        break;
+
+      case 'Change':
+        if (nodeName === 'input' || nodeName === 'textarea') {
+          if (platform !== 'quick') {
+            eventName = 'Input';
+          }
+        }
+        break;
+
+      default:
+        break;
     }
 
     (eventAttribute! as t.JSXAttribute).name = t.jsxIdentifier(
@@ -284,21 +317,30 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
     if (t.isJSXIdentifier(attributeName)) {
       if (attributeName.name === 'src') {
         if (t.isStringLiteral(attributeValue)) {
-          if (/^https?:\/\//.test(attributeValue.value)) {
-            // console.log('remote: ', attributeValue.value);
-          } else {
-            const copy = async () => {
-              const id = attributeValue.value;
-              const { location } = await this.transpiler.resolve(id, this.dir);
-              const imageResource = new BinaryResource({
-                rawPath: location,
-                transpiler: this.transpiler
-              });
-              this.transpiler.addResource(location, imageResource);
-              await imageResource.process();
-              attributeValue.value = this.relativeOfSourceDirTo(location);
-            };
-            this.appendAsyncProcess(copy());
+          const id = attributeValue.value;
+          switch (true) {
+            case /^https?:\/\//.test(attributeValue.value):
+              break;
+
+            case !id.startsWith('{{'):
+              const copy = async () => {
+                const { location } = await this.resolve(
+                  id,
+                  this.dir
+                );
+                const imageResource = new BinaryResource({
+                  rawPath: location,
+                  transpiler: this.transpiler
+                });
+                this.transpiler.addResource(location, imageResource);
+                await imageResource.process();
+                attributeValue.value = this.relativeOfSourceDirTo(location);
+              };
+              this.appendAsyncProcess(copy());
+              break;
+
+            default:
+              break;
           }
         }
       }
@@ -339,7 +381,7 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
                   )
                 );
 
-              return;
+              break;
 
             default:
               if (t.isStringLiteral(expression)) return;
@@ -393,9 +435,16 @@ class WeixinLikeComponentOrPage extends JavaScriptClass {
             mappedOpeningNodeName
           );
         }
-        this.transformIfNodeIsComponent(path);
       }
     };
+  }
+
+  private transformComponentToReactUseComponent() {
+    this.transform({
+      JSXElement: path => {
+        this.transformIfNodeIsComponent(path);
+      }
+    });
   }
 
   private transformIfNodeIsComponent(path: NodePath<t.JSXElement>) {

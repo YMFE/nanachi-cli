@@ -1,7 +1,8 @@
 // tslint:disable no-var-requires
+import platformExtensions from '@platforms/WeixinLike/platformSpecificExtensions';
+import { ResourceState } from '@resources/Resource';
 import SourceCodeResource from '@resources/SourceCodeResource';
 import postcss from 'postcss';
-import { ResourceState } from '@resources/Resource';
 const scss = require('postcss-scss');
 const scssPlugin = require('@csstools/postcss-sass');
 const postcssImport = require('postcss-import');
@@ -26,11 +27,11 @@ class Style extends SourceCodeResource {
     });
 
     this.utf8Content = result.css.toString();
-    this.destExt = '.wxss';
+    this.destExt = platformExtensions[this.platform].style;
     this.state = ResourceState.Emit;
   }
 
-  private register() {
+  private async register() {
     this.registerAlias();
     this.registerSCSS();
   }
@@ -41,11 +42,13 @@ class Style extends SourceCodeResource {
 
   private registerAlias() {
     const alias = postcssImport({
-      resolve: (importer: string, baseDir: string) => {
+      resolve: async (importer: string, baseDir: string) => {
         if (!/\.s[ca]ss$/.test(importer)) {
-          importer = importer + '.scss';
+          importer =
+            importer + platformExtensions[this.platform].style;
         }
-        return this.transpiler.resolveSync(importer, this.dir).location;
+        const { location } = await this.resolve(importer, this.dir);
+        return location;
       }
     });
     this.plugins.push(alias);
