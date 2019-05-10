@@ -1,7 +1,7 @@
-import { warn } from '@shared/spinner';
 import Transpiler from '@transpiler/Transpiler';
 import chalk from 'chalk';
 import resolve from 'resolve';
+import platformSpecificRuntimeName from './platformSpecificRuntimeName';
 
 type TypeResolveCache = 'alias' | 'resolve';
 
@@ -24,7 +24,7 @@ class ResolveServices {
   constructor(alias: InterfaceAlias = {}, transpiler: Transpiler) {
     this.resolve = this.resolve.bind(this);
     this.transpiler = transpiler;
-    this.initAlias(alias);
+    this.setAlias(alias);
   }
 
   public async resolve(id: string, base?: string) {
@@ -56,17 +56,44 @@ class ResolveServices {
 
   public async init() {
     await this.prepareRegeneratorRuntime();
+    await this.prepareReactRuntime();
+  }
+
+  public setAlias(alias: InterfaceAlias) {
+    Object.keys(alias).forEach(key => {
+      if (this.aliasKeys.find(aliasKey => aliasKey === key)) {
+        // tslint:disable-next-line: no-console
+        return console.log(
+          chalk`
+{bold Duplicated alias:
+    ({yellow ${key} --> ${alias[key]}})
+The following alias has been set:
+    ({green ${key} --> ${this.searchCache(key)!.location}})}`
+        );
+      }
+
+      this.aliasKeys.push(key);
+      this.caches.push(this.buildResolveResult(key, alias[key], 'alias'));
+    });
   }
 
   private async prepareRegeneratorRuntime() {
     const id = 'regenerator-runtime/runtime.js';
-    await this.resolve(
-      'regenerator-runtime/runtime.js',
-      this.transpiler.transpilerRoot
-    );
+    await this.resolve(id, this.transpiler.transpilerRoot);
 
     this.aliasKeys.push(id);
     this.caches.find(cache => cache.id === id)!.type = 'alias';
+  }
+
+  private async prepareReactRuntime() {
+    const id = `nanachi-runtime/runtime/${
+      platformSpecificRuntimeName[this.transpiler.platform]
+    }`;
+    await this.resolve(id, this.transpiler.transpilerRoot);
+
+    this.aliasKeys.push(id);
+    this.caches.find(cache => cache.id === id)!.type = 'alias';
+    this.caches.find(cache => cache.id === id)!.id = '@react';
   }
 
   private buildResolveResult(
@@ -106,21 +133,6 @@ class ResolveServices {
 
         this.caches.push(resolveResult);
       });
-    });
-  }
-
-  private initAlias(alias: InterfaceAlias) {
-    Object.keys(alias).forEach(key => {
-      if (this.aliasKeys.find(aliasKey => aliasKey === key)) {
-        return warn(
-          chalk`{bold Duplicated alias ({yellow ${key}, alias of ${
-            alias[key]
-          }}) found.}`
-        );
-      }
-
-      this.aliasKeys.push(key);
-      this.caches.push(this.buildResolveResult(key, alias[key], 'alias'));
     });
   }
 

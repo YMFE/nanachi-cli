@@ -19,9 +19,9 @@ function reportError(resource: FileResource) {
 
     log(chalk`{white.bgRed.bold Fatal Error:}`);
     log(
-      chalk`  {bold.dim SourceFilePath:} {bold.underline ${resource.rawPath}}`
+      chalk`  {bold.dim Source File Path:} {bold.underline ${resource.rawPath}}`
     );
-    stop(chalk`  {bold.dim ErrorMessage:} {bold ${error}}`);
+    stop(chalk`  {bold.dim Error Message:} {bold ${error}}`);
   }
 }
 

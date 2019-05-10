@@ -1,16 +1,17 @@
 import SubCommand from '@commands/SubCommand';
 import JavaScript from '@languages/javascript/JavaScript';
 import JavaScriptApp from '@languages/javascript/JavaScriptApp';
-import JavaScriptLibrary from '@languages/javascript/JavaScriptLibrary';
 import PlainJavaScript from '@languages/javascript/PlainJavaScript';
 import Style from '@languages/style/Style';
 import WeixinLikeComponentOrPage from '@platforms/WeixinLike/WeixinLikeComponentOrPage';
 import BinaryResource from '@resources/BinaryResource';
 import DuplexResource from '@resources/DuplexResource';
+import RemoteResource from '@resources/RemoteResource';
 import Resource, { ResourceState } from '@resources/Resource';
 import ResolveServices from '@services/ResolveServices';
 import reportError from '@shared/reportError';
 import path from 'path';
+import RuntimeManager from './RuntimeManager';
 
 const appEntryFileName = 'app.js';
 const sourceCodeDirName = 'source';
@@ -38,9 +39,9 @@ class Transpiler {
   public command: SubCommand;
   public resources: Map<string, DuplexResource | BinaryResource> = new Map();
   public transpilerRoot: string = path.resolve(__dirname, '..');
-  public runtimeLocation: string;
 
   private resolveServices: ResolveServices;
+  private runtimeManager: RuntimeManager;
 
   constructor({ projectRoot, platform, command }: ITranspiler) {
     this.projectRoot = projectRoot;
@@ -48,16 +49,17 @@ class Transpiler {
     this.command = command;
     this.resolveServices = new ResolveServices(
       {
-        '@react': path.resolve(this.projectSourceDirectory, 'ReactWX.js'),
         '@components': path.resolve(this.projectSourceDirectory, 'components'),
         '@assets': path.resolve(this.projectSourceDirectory, 'assets'),
         '@common': path.resolve(this.projectSourceDirectory, 'common')
       },
       this
     );
+    this.runtimeManager = new RuntimeManager(this);
   }
 
   public async process() {
+    await this.resolveServices.init();
     await this.prepareRegeneratorRuntime();
     await this.prepareRuntime();
 
@@ -69,7 +71,7 @@ class Transpiler {
 
     await app.process();
 
-    this.check();
+    this.checkResourcesState();
     await this.emit();
   }
 
@@ -117,25 +119,6 @@ class Transpiler {
 
   public async processResource(id: string, location: string) {
     switch (true) {
-      case id === '@react':
-        const reactLocation = (await this.resolve(
-          './ReactWX.js',
-          this.projectSourceDirectory
-        )).location;
-        const reactResource = new JavaScriptLibrary({
-          rawPath: reactLocation,
-          transpiler: this
-        });
-
-        reactResource.destPath = path.resolve(
-          this.projectDestDirectory,
-          'lib/React.js'
-        );
-        this.resources.set(location, reactResource);
-        await reactResource.process();
-        this.emit();
-        break;
-
       case /\.(s?css|less)$/.test(location):
         const styleResource = new Style({
           rawPath: location,
@@ -181,17 +164,27 @@ class Transpiler {
     return path.resolve(this.projectRoot, sourceCodeDirName, appEntryFileName);
   }
 
-  private async prepareRuntime() {
-    await this.resolveServices.init();
+  private async chooseRuntime() {
+    const { remoteRuntime } = this.command.options;
+
+    if (remoteRuntime) {
+      const remoteResource = new RemoteResource('', this);
+      return remoteResource;
+    }
+
     const { location } = await this.resolve('@react');
     const resource = new BinaryResource({
       rawPath: location,
       transpiler: this
     });
-    this.runtimeLocation = location;
+    return resource;
+  }
+
+  private async prepareRuntime() {
+    const resource = await this.runtimeManager.retrieve();
     await resource.process();
     resource.destPath = path.resolve(this.projectDestDirectory, 'lib/React.js');
-    this.addResource(location, resource);
+    this.addResource(resource.rawPath, resource);
   }
 
   private async prepareRegeneratorRuntime() {
@@ -248,7 +241,7 @@ class Transpiler {
     );
   }
 
-  private check() {
+  private checkResourcesState() {
     if (this.hasError()) this.reportError();
   }
 
